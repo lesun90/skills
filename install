@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SKILLS_DIR="${SKILLS_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+SKILLS_REPO="${SKILLS_REPO:-git@github.com:lesun90/skills.git}"
+SKILLS_CACHE="${SKILLS_CACHE:-$HOME/.local/share/skills}"
 AGENT="${1:-all}"
 
 case "$AGENT" in
@@ -14,15 +15,20 @@ if ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
     exit 1
 fi
 
-if [[ ! -d "$SKILLS_DIR" ]]; then
-    echo "error: skills repo not found at $SKILLS_DIR" >&2
-    printf 'Bootstrap: git clone git@github.com:<you>/skills.git ~/skills\n' >&2
-    exit 1
+# Clone on first use; fetch + reset on subsequent runs.
+if [[ ! -d "$SKILLS_CACHE/.git" ]]; then
+    echo "Cloning skills repo..."
+    git clone --quiet "$SKILLS_REPO" "$SKILLS_CACHE"
+else
+    if ! git -C "$SKILLS_CACHE" fetch --quiet origin 2>/dev/null; then
+        echo "warning: could not reach remote, using cached copy" >&2
+    else
+        upstream=$(git -C "$SKILLS_CACHE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo "origin/main")
+        git -C "$SKILLS_CACHE" reset --hard "$upstream" --quiet
+    fi
 fi
 
-if ! git -C "$SKILLS_DIR" pull --ff-only >/dev/null 2>&1; then
-    echo "warning: git pull --ff-only failed, continuing with local copy" >&2
-fi
+SKILLS_DIR="$SKILLS_CACHE"
 
 install_claude=false
 install_codex=false
@@ -70,7 +76,7 @@ _exclude_if_missing() {
 }
 
 if ! grep -qF "# Agent skills" "$EXCLUDE_FILE"; then
-    printf '\n# Agent skills (managed by %s/install)\n' "$SKILLS_DIR" >> "$EXCLUDE_FILE"
+    printf '\n# Agent skills (managed by skills/install)\n' >> "$EXCLUDE_FILE"
 fi
 [[ "$install_claude" == true ]] && _exclude_if_missing ".claude/"
 [[ "$install_codex"  == true ]] && _exclude_if_missing ".agents/"

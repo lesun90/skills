@@ -16,16 +16,16 @@ agent-native paths so agents work without any reconfiguration.
 
 ## Solution
 
-A single executable script `install` at the root of the skills repo.
-On any new machine, clone the skills repo once. On any new project, run the script
-from the project root. Nothing else is needed.
+A single executable script `install` that users download once. On first run it clones
+the skills repo into a local cache. On subsequent runs it fetches the latest skills
+and reinstalls them. No manual `git clone` or separate bootstrap step is needed.
 
 ---
 
 ## Skills Repo Layout
 
 ```
-~/skills/
+skills/
   install              # the installer script
   README.md
   skills/
@@ -41,7 +41,8 @@ from the project root. Nothing else is needed.
 ## Bootstrap (once per machine)
 
 ```bash
-git clone git@github.com:<you>/skills.git ~/skills
+curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install -o ~/install
+chmod +x ~/install
 ```
 
 ---
@@ -51,23 +52,33 @@ git clone git@github.com:<you>/skills.git ~/skills
 From any project repo root:
 
 ```bash
-~/skills/install           # all agents (default)
-~/skills/install claude    # Claude Code only
-~/skills/install codex     # Codex only
+~/install           # all agents (default)
+~/install claude    # Claude Code only
+~/install codex     # Codex only
 ```
 
 ---
 
 ## What `install` Does
 
-### 1. Self-update
+### 1. Sync skills cache
+
+`SKILLS_CACHE` defaults to `~/.local/share/skills`. On first use the cache does not
+exist, so the script clones the repo:
 
 ```
-git -C ~/skills pull --ff-only
+git clone git@github.com:lesun90/skills.git ~/.local/share/skills
 ```
 
-Ensures skills are up to date before copying. Fast-forward only to avoid
-surprises on shared machines.
+On subsequent runs the cache already exists, so the script fetches and resets:
+
+```
+git fetch origin
+git reset --hard @{u}
+```
+
+If the remote is unreachable, the script warns and continues with the cached copy.
+`SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
 ### 2. Copy skills into agent-native paths
 
@@ -86,7 +97,7 @@ Each skill directory is copied wholesale. Codex discovers skills in
 Appends entries if not already present:
 
 ```
-# Agent skills (managed by ~/skills/install)
+# Agent skills (managed by skills/install)
 .claude/
 .agents/
 ```
@@ -110,9 +121,9 @@ Running `install` multiple times in the same repo is safe:
 | Condition | Behavior |
 |---|---|
 | Not inside a git repo | Print error, exit 1 |
-| `~/skills` missing | Print clone instructions, exit 1 |
 | Unknown agent argument | Print usage, exit 1 |
-| `git pull` fails (no network) | Warn and continue with local copy |
+| Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
+| Remote unreachable (cache exists) | Warn and continue with cached copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
 
 ---

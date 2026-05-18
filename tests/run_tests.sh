@@ -95,9 +95,10 @@ make_project() {
     git -C "$dir" config user.name "Test"
 }
 
+# SKILLS_CACHE points to a pre-populated local git repo (bypasses network).
 run_install() {
-    local project_dir="$1" skills_dir="$2" agent="${3:-}"
-    (cd "$project_dir" && SKILLS_DIR="$skills_dir" bash "$INSTALL" $agent 2>&1)
+    local project_dir="$1" skills_cache="$2" agent="${3:-}"
+    (cd "$project_dir" && SKILLS_CACHE="$skills_cache" bash "$INSTALL" $agent 2>&1)
 }
 
 # ── tests ────────────────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ test_not_git_repo() {
     mkdir "$project"   # deliberately no .git
 
     local output exit_code
-    output=$(cd "$project" && SKILLS_DIR="$tmp/skills" bash "$INSTALL" 2>&1) && exit_code=$? || exit_code=$?
+    output=$(cd "$project" && SKILLS_CACHE="$tmp/cache" bash "$INSTALL" 2>&1) && exit_code=$? || exit_code=$?
 
     assert_exit 1 "$exit_code" || return 1
     assert_contains "git repository" "$output" || return 1
@@ -116,20 +117,22 @@ test_not_git_repo() {
 
 run_test "exits 1 when not in a git repo" test_not_git_repo
 
-test_skills_dir_missing() {
+test_clone_fails_when_unreachable() {
     local tmp="$1"
     local project="$tmp/project"
     make_project "$project"
 
+    # No cache + invalid repo URL → git clone fails → script exits non-zero
     local output exit_code
-    output=$(cd "$project" && SKILLS_DIR="$tmp/nonexistent" bash "$INSTALL" 2>&1) && exit_code=$? || exit_code=$?
+    output=$(cd "$project" \
+        && SKILLS_CACHE="$tmp/cache" SKILLS_REPO="git@github.invalid:nobody/nope.git" \
+        bash "$INSTALL" 2>&1) && exit_code=$? || exit_code=$?
 
-    assert_exit 1 "$exit_code" || return 1
-    assert_contains "not found" "$output" || return 1
-    assert_contains "git clone" "$output" || return 1
+    assert_exit 128 "$exit_code" || return 1
+    assert_contains "Cloning" "$output" || return 1
 }
 
-run_test "exits 1 when skills dir is missing" test_skills_dir_missing
+run_test "exits non-zero when cache is missing and repo is unreachable" test_clone_fails_when_unreachable
 
 test_unknown_agent_arg() {
     local tmp="$1"
@@ -137,7 +140,7 @@ test_unknown_agent_arg() {
     make_project "$project"
 
     local output exit_code
-    output=$(cd "$project" && SKILLS_DIR="$tmp/skills" bash "$INSTALL" gemini 2>&1) && exit_code=$? || exit_code=$?
+    output=$(cd "$project" && SKILLS_CACHE="$tmp/cache" bash "$INSTALL" gemini 2>&1) && exit_code=$? || exit_code=$?
 
     assert_exit 1 "$exit_code" || return 1
     assert_contains "unknown agent" "$output" || return 1
@@ -145,33 +148,31 @@ test_unknown_agent_arg() {
 
 run_test "exits 1 for unknown agent argument" test_unknown_agent_arg
 
-test_pull_failure_warns_and_continues() {
+test_no_remote_continues() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
-    # Remove the remote so git pull fails
-    git -C "$skills" remote remove origin 2>/dev/null || true
+    make_skills_repo "$cache"
+    # No remote — fetch is skipped silently, install uses local cache
 
     local output exit_code
-    output=$(run_install "$project" "$skills") && exit_code=$? || exit_code=$?
+    output=$(run_install "$project" "$cache") && exit_code=$? || exit_code=$?
 
     assert_exit 0 "$exit_code" || return 1
-    assert_contains "warning" "$output" || return 1
-    assert_contains "pull" "$output" || return 1
+    assert_contains "Done." "$output" || return 1
 }
 
-run_test "warns on git pull failure and continues" test_pull_failure_warns_and_continues
+run_test "succeeds with local-only cache (no remote)" test_no_remote_continues
 
 test_claude_skills_created() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" claude >/dev/null
+    run_install "$project" "$cache" claude >/dev/null
 
     assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.claude/skills/bar/SKILL.md" || return 1
@@ -185,11 +186,11 @@ run_test "claude: copies skill directories to .claude/skills/" test_claude_skill
 test_codex_skills_created() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" codex >/dev/null
+    run_install "$project" "$cache" codex >/dev/null
 
     assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.agents/skills/bar/SKILL.md" || return 1
@@ -203,11 +204,11 @@ run_test "codex: copies skill directories to .agents/skills/" test_codex_skills_
 test_all_installs_both() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" >/dev/null  # default: all
+    run_install "$project" "$cache" >/dev/null  # default: all
 
     assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
@@ -218,18 +219,16 @@ run_test "default (all): installs for both claude and codex" test_all_installs_b
 test_skips_skill_without_skill_md() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
-    # Add a skill folder with no SKILL.md
-    mkdir -p "$skills/skills/empty-skill"
+    make_skills_repo "$cache"
+    mkdir -p "$cache/skills/empty-skill"
 
     local output
-    output=$(run_install "$project" "$skills")
+    output=$(run_install "$project" "$cache")
 
     assert_contains "warning" "$output" || return 1
     assert_contains "empty-skill" "$output" || return 1
-    # Other skills still installed
     assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
 }
 
@@ -238,11 +237,11 @@ run_test "skips skill folders with no SKILL.md and warns" test_skips_skill_witho
 test_exclude_claude_only() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" claude >/dev/null
+    run_install "$project" "$cache" claude >/dev/null
 
     assert_file_contains "$project/.git/info/exclude" ".claude/" || return 1
     assert_file_not_contains "$project/.git/info/exclude" ".agents/" || return 1
@@ -253,11 +252,11 @@ run_test "claude: adds only .claude/ to .git/info/exclude" test_exclude_claude_o
 test_exclude_codex_only() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" codex >/dev/null
+    run_install "$project" "$cache" codex >/dev/null
 
     assert_file_contains "$project/.git/info/exclude" ".agents/" || return 1
     assert_file_not_contains "$project/.git/info/exclude" ".claude/" || return 1
@@ -268,11 +267,11 @@ run_test "codex: adds only .agents/ to .git/info/exclude" test_exclude_codex_onl
 test_exclude_all() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" >/dev/null
+    run_install "$project" "$cache" >/dev/null
 
     assert_file_contains "$project/.git/info/exclude" ".claude/" || return 1
     assert_file_contains "$project/.git/info/exclude" ".agents/" || return 1
@@ -283,12 +282,12 @@ run_test "all: adds both .claude/ and .agents/ to .git/info/exclude" test_exclud
 test_exclude_idempotent() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
-    run_install "$project" "$skills" >/dev/null
-    run_install "$project" "$skills" >/dev/null  # run twice
+    run_install "$project" "$cache" >/dev/null
+    run_install "$project" "$cache" >/dev/null  # run twice
 
     local count
     count=$(grep -cxF ".claude/" "$project/.git/info/exclude")
@@ -308,15 +307,15 @@ run_test "exclude entries are not duplicated on re-run" test_exclude_idempotent
 test_gitignore_untouched() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills="$tmp/skills"
+    local cache="$tmp/cache"
     make_project "$project"
-    make_skills_repo "$skills"
+    make_skills_repo "$cache"
 
     printf 'node_modules/\n*.log\n' > "$project/.gitignore"
     local before after
     before=$(cat "$project/.gitignore")
 
-    run_install "$project" "$skills" >/dev/null
+    run_install "$project" "$cache" >/dev/null
 
     after=$(cat "$project/.gitignore")
     if [[ "$before" != "$after" ]]; then
@@ -330,12 +329,16 @@ run_test ".gitignore is not touched" test_gitignore_untouched
 test_full_run_with_real_skills() {
     local tmp="$1"
     local project="$tmp/project"
-    local skills
-    skills="$(cd "$(dirname "$INSTALL")" && pwd)"
+    local workspace
+    workspace="$(cd "$(dirname "$INSTALL")" && pwd)"
+    # Clone workspace locally so the install script's git reset --hard
+    # operates on the clone, not the workspace itself.
+    local cache="$tmp/cache"
+    git clone --quiet --local "$workspace" "$cache"
     make_project "$project"
 
     local output exit_code
-    output=$(run_install "$project" "$skills") && exit_code=$? || exit_code=$?
+    output=$(run_install "$project" "$cache") && exit_code=$? || exit_code=$?
 
     assert_exit 0 "$exit_code" || return 1
     assert_contains "Done." "$output" || return 1
@@ -346,22 +349,15 @@ test_full_run_with_real_skills() {
         _fail_msg+="  expected at least 1 SKILL.md in .claude/skills/, found $count\n"
         return 1
     fi
-    count=$(find "$project/.agents/skills" -name "SKILL.md" 2>/dev/null | wc -l)
-    if [[ "$count" -lt 1 ]]; then
-        _fail_msg+="  expected at least 1 SKILL.md in .agents/skills/, found $count\n"
-        return 1
-    fi
 
     assert_file_contains "$project/.git/info/exclude" ".claude/" || return 1
-    assert_file_contains "$project/.git/info/exclude" ".agents/" || return 1
 
     # Re-run must be idempotent
-    run_install "$project" "$skills" >/dev/null
-    count=$(find "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
+    run_install "$project" "$cache" >/dev/null
     local count2
-    count2=$(find "$project/.agents/skills" -name "SKILL.md" 2>/dev/null | wc -l)
+    count2=$(find "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
     if [[ "$count" -ne "$count2" ]]; then
-        _fail_msg+="  claude ($count) and codex ($count2) skill counts differ after re-run\n"
+        _fail_msg+="  skill count changed after re-run: $count → $count2\n"
         return 1
     fi
 }

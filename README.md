@@ -5,20 +5,23 @@ A personal skill library for AI coding agents. Skills are reference guides that 
 ## Bootstrap (once per machine)
 
 ```bash
-git clone git@github.com:<you>/skills.git ~/skills
+curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install -o ~/install
+chmod +x ~/install
 ```
+
+On first run the script clones the skills repo automatically. Subsequent runs fetch the latest skills from the remote.
 
 ## Install into a project (per project)
 
 From any project repo root:
 
 ```bash
-~/skills/install           # all agents (default)
-~/skills/install claude    # Claude Code only
-~/skills/install codex     # Codex only
+~/install           # all agents (default)
+~/install claude    # Claude Code only
+~/install codex     # Codex only
 ```
 
-The script self-updates from git, then copies skills into agent-native paths and records exclusions in `.git/info/exclude`.
+Re-running is safe — all operations are idempotent.
 
 ## What install does
 
@@ -27,8 +30,6 @@ The script self-updates from git, then copies skills into agent-native paths and
 | `.claude/skills/<skill-name>/` | Claude Code | Discovered via the `Skill` tool |
 | `.agents/skills/<skill-name>/` | Codex | Discovered automatically at session start |
 | `.git/info/exclude` entries | — | Keeps generated files out of git without touching `.gitignore` |
-
-Re-running is safe — all operations are idempotent.
 
 ## Skills
 
@@ -72,4 +73,4 @@ bash tests/run_tests.sh
 
 1. Create `skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`)
 2. Follow the `writing-skills` skill for the full TDD-based authoring process
-3. Run `~/skills/install` in any project to pick up the new skill
+3. Run `~/install` in any project to pick up the new skill
