@@ -18,4 +18,20 @@ if ! git -C "$SKILLS_DIR" pull --ff-only >/dev/null 2>&1; then
     echo "warning: git pull --ff-only failed, continuing with local copy" >&2
 fi
 
+COMMANDS_DIR="$(pwd)/.claude/commands"
+mkdir -p "$COMMANDS_DIR"
+
+for skill_dir in "$SKILLS_DIR/skills"/*/; do
+    [[ -d "$skill_dir" ]] || continue
+    skill_name="$(basename "$skill_dir")"
+    skill_md="$skill_dir/SKILL.md"
+
+    if [[ ! -f "$skill_md" ]]; then
+        echo "warning: $skill_name has no SKILL.md, skipping" >&2
+        continue
+    fi
+
+    cp "$skill_md" "$COMMANDS_DIR/$skill_name.md"
+done
+
 echo "Done."

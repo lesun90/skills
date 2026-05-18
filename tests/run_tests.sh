@@ -143,6 +143,23 @@ test_pull_failure_warns_and_continues() {
 
 run_test "warns on git pull failure and continues" test_pull_failure_warns_and_continues
 
+test_claude_commands_created() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    run_install "$project" "$skills" >/dev/null
+
+    assert_file_exists "$project/.claude/commands/foo.md" || return 1
+    assert_file_exists "$project/.claude/commands/bar.md" || return 1
+    assert_file_contains "$project/.claude/commands/foo.md" "Foo Skill" || return 1
+    assert_file_contains "$project/.claude/commands/bar.md" "Bar Skill" || return 1
+}
+
+run_test "copies SKILL.md files to .claude/commands/" test_claude_commands_created
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""
