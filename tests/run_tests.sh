@@ -109,6 +109,21 @@ test_not_git_repo() {
 
 run_test "exits 1 when not in a git repo" test_not_git_repo
 
+test_skills_dir_missing() {
+    local tmp="$1"
+    local project="$tmp/project"
+    make_project "$project"
+
+    local output exit_code
+    output=$(cd "$project" && SKILLS_DIR="$tmp/nonexistent" bash "$INSTALL" 2>&1) && exit_code=$? || exit_code=$?
+
+    assert_exit 1 "$exit_code" || return 1
+    assert_contains "not found" "$output" || return 1
+    assert_contains "git clone" "$output" || return 1
+}
+
+run_test "exits 1 when skills dir is missing" test_skills_dir_missing
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""
