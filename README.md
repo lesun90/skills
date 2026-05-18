@@ -13,18 +13,20 @@ git clone git@github.com:<you>/skills.git ~/skills
 From any project repo root:
 
 ```bash
-~/skills/install
+~/skills/install           # all agents (default)
+~/skills/install claude    # Claude Code only
+~/skills/install codex     # Codex only
 ```
 
-That's it. The script self-updates from git, then copies skills into agent-native paths and adds them to `.gitignore`.
+The script self-updates from git, then copies skills into agent-native paths and records exclusions in `.git/info/exclude`.
 
 ## What install does
 
-| Output | Purpose |
-|--------|---------|
-| `.claude/commands/<skill>.md` | Claude Code slash commands (e.g. `/writing-skills`) |
-| `AGENTS.md` | Codex reads this automatically at session start |
-| `.gitignore` entries | Keeps generated files out of project history |
+| Output | Agent | Purpose |
+|--------|-------|---------|
+| `.claude/skills/<skill-name>/` | Claude Code | Discovered via the `Skill` tool |
+| `.agents/skills/<skill-name>/` | Codex | Discovered automatically at session start |
+| `.git/info/exclude` entries | — | Keeps generated files out of git without touching `.gitignore` |
 
 Re-running is safe — all operations are idempotent.
 

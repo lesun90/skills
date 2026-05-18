@@ -1,4 +1,4 @@
-# Design: `git-skills` Skill Installer
+# Design: `skills` Installer
 
 **Date:** 2026-05-18
 **Status:** Approved
@@ -7,7 +7,7 @@
 
 ## Problem
 
-When starting work on a new project repo, agent skills (Claude, Codex, etc.) need
+When starting work on a new project repo, agent skills (Claude Code, Codex, etc.) need
 to be available locally but must not be committed to the project git history. Skills
 live in a personal GitHub skills repo and need to be copied into each project using
 agent-native paths so agents work without any reconfiguration.
@@ -16,7 +16,7 @@ agent-native paths so agents work without any reconfiguration.
 
 ## Solution
 
-A single executable script `install` that lives at the root of the skills repo.
+A single executable script `install` at the root of the skills repo.
 On any new machine, clone the skills repo once. On any new project, run the script
 from the project root. Nothing else is needed.
 
@@ -26,17 +26,14 @@ from the project root. Nothing else is needed.
 
 ```
 ~/skills/
-  install              # the installer script (this design)
+  install              # the installer script
   README.md
-  coding/
-    SKILL.md
-    (supporting files)
-  brainstorming/
-    SKILL.md
-    (supporting files)
-  scaffolding/
-    SKILL.md
-  ...
+  skills/
+    skill-name/
+      SKILL.md         # main reference (required)
+      ...              # supporting files (optional)
+  tests/
+    run_tests.sh
 ```
 
 ---
@@ -47,9 +44,6 @@ from the project root. Nothing else is needed.
 git clone git@github.com:<you>/skills.git ~/skills
 ```
 
-The skills repo is always expected at `~/skills`. No PATH changes, no `.gitconfig`
-edits, no system-level installs required.
-
 ---
 
 ## Usage (per project)
@@ -57,10 +51,10 @@ edits, no system-level installs required.
 From any project repo root:
 
 ```bash
-~/skills/install
+~/skills/install           # all agents (default)
+~/skills/install claude    # Claude Code only
+~/skills/install codex     # Codex only
 ```
-
-That's it.
 
 ---
 
@@ -77,43 +71,28 @@ surprises on shared machines.
 
 ### 2. Copy skills into agent-native paths
 
-**Claude Code** -- slash commands via `.claude/commands/`
+**Claude Code** — `.claude/skills/<skill-name>/`
 
-Each skill's `SKILL.md` is copied to `.claude/commands/<skill-name>.md`.
-Claude Code discovers these automatically as `/skill-name` commands.
-No Claude configuration required.
+Each skill directory is copied wholesale. Claude Code discovers skills in
+`.claude/skills/` via the `Skill` tool. No Claude configuration required.
 
-```
-.claude/
-  commands/
-    coding.md
-    brainstorming.md
-    scaffolding.md
-    ...
-```
+**Codex** — `.agents/skills/<skill-name>/`
 
-**Codex** -- `AGENTS.md` at repo root
+Each skill directory is copied wholesale. Codex discovers skills in
+`.agents/skills/` automatically at session start. No Codex configuration required.
 
-Each skill's `SKILL.md` content is appended into `AGENTS.md` under a
-heading per skill. Codex reads `AGENTS.md` automatically.
-If `AGENTS.md` already exists, skills are appended after a `## Skills`
-section marker (idempotent: existing marker is replaced, not duplicated).
+### 3. Record exclusions in `.git/info/exclude`
 
-```
-AGENTS.md        # existing project file, skills appended at bottom
-```
-
-### 3. Update `.gitignore`
-
-Appends the following entries if not already present:
+Appends entries if not already present:
 
 ```
 # Agent skills (managed by ~/skills/install)
 .claude/
-AGENTS.md
+.agents/
 ```
 
-This ensures neither Claude nor Codex skill files are ever accidentally committed.
+`.git/info/exclude` behaves identically to `.gitignore` but lives inside `.git/`
+and is never committed. The project's `.gitignore` is left untouched.
 
 ---
 
@@ -121,9 +100,8 @@ This ensures neither Claude nor Codex skill files are ever accidentally committe
 
 Running `install` multiple times in the same repo is safe:
 
-- Files are overwritten (copy is always fresh from skills repo)
-- `.gitignore` entries are only appended if missing
-- `AGENTS.md` skills section is replaced, not duplicated
+- Skill directories are removed then re-copied (always fresh)
+- `.git/info/exclude` entries are only appended if missing
 
 ---
 
@@ -133,6 +111,7 @@ Running `install` multiple times in the same repo is safe:
 |---|---|
 | Not inside a git repo | Print error, exit 1 |
 | `~/skills` missing | Print clone instructions, exit 1 |
+| Unknown agent argument | Print usage, exit 1 |
 | `git pull` fails (no network) | Warn and continue with local copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
 
@@ -142,8 +121,8 @@ Running `install` multiple times in the same repo is safe:
 
 | Agent | Native path | Config required? |
 |---|---|---|
-| Claude Code | `.claude/commands/<skill>.md` | None |
-| Codex | `AGENTS.md` | None |
+| Claude Code | `.claude/skills/<skill-name>/` | None |
+| Codex | `.agents/skills/<skill-name>/` | None |
 
 Additional agents can be added to `install` later without changing the skills
 repo structure.
@@ -152,7 +131,7 @@ repo structure.
 
 ## Non-Goals
 
-- No selective install (all skills or none -- per-project filtering is future work)
+- No selective skill install (all skills or none — per-skill filtering is future work)
 - No symlinks (copied files only, no live sync)
 - No system-wide PATH modification
 - No support for Windows (bash script, macOS/Linux only)

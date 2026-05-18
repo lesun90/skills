@@ -2,6 +2,12 @@
 set -euo pipefail
 
 SKILLS_DIR="${SKILLS_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+AGENT="${1:-all}"
+
+case "$AGENT" in
+    claude|codex|all) ;;
+    *) echo "error: unknown agent '$AGENT'. Use: claude, codex, or all" >&2; exit 1 ;;
+esac
 
 if ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
     echo "error: not inside a git repository. Run from your project root." >&2
@@ -18,12 +24,19 @@ if ! git -C "$SKILLS_DIR" pull --ff-only >/dev/null 2>&1; then
     echo "warning: git pull --ff-only failed, continuing with local copy" >&2
 fi
 
-COMMANDS_DIR="$(pwd)/.claude/commands"
-AGENTS_FILE="$(pwd)/AGENTS.md"
+install_claude=false
+install_codex=false
+case "$AGENT" in
+    claude) install_claude=true ;;
+    codex)  install_codex=true ;;
+    all)    install_claude=true; install_codex=true ;;
+esac
 
-mkdir -p "$COMMANDS_DIR"
+CLAUDE_SKILLS_DIR="$(pwd)/.claude/skills"
+CODEX_SKILLS_DIR="$(pwd)/.agents/skills"
 
-skills_section="## Skills"$'\n'"<!-- managed by $SKILLS_DIR/install -->"
+[[ "$install_claude" == true ]] && mkdir -p "$CLAUDE_SKILLS_DIR"
+[[ "$install_codex"  == true ]] && mkdir -p "$CODEX_SKILLS_DIR"
 
 for skill_dir in "$SKILLS_DIR/skills"/*/; do
     [[ -d "$skill_dir" ]] || continue
@@ -35,37 +48,31 @@ for skill_dir in "$SKILLS_DIR/skills"/*/; do
         continue
     fi
 
-    # Claude Code
-    cp "$skill_md" "$COMMANDS_DIR/$skill_name.md"
+    if [[ "$install_claude" == true ]]; then
+        rm -rf "${CLAUDE_SKILLS_DIR:?}/$skill_name"
+        cp -r "${skill_dir%/}" "$CLAUDE_SKILLS_DIR/"
+    fi
 
-    # Codex: accumulate under per-skill heading
-    skills_section+=$'\n\n'"### $skill_name"$'\n\n'"$(cat "$skill_md")"
+    if [[ "$install_codex" == true ]]; then
+        rm -rf "${CODEX_SKILLS_DIR:?}/$skill_name"
+        cp -r "${skill_dir%/}" "$CODEX_SKILLS_DIR/"
+    fi
 done
 
-# Write AGENTS.md — replace ## Skills section if present, preserve content above it
-if [[ -f "$AGENTS_FILE" ]]; then
-    prefix=$(awk '/^## Skills/{exit} {print}' "$AGENTS_FILE")
-else
-    prefix=""
-fi
+GIT_DIR="$(git -C "$(pwd)" rev-parse --git-dir)"
+EXCLUDE_FILE="$GIT_DIR/info/exclude"
+mkdir -p "$GIT_DIR/info"
+touch "$EXCLUDE_FILE"
 
-{
-    [[ -n "$prefix" ]] && printf '%s\n\n' "$prefix"
-    printf '%s\n' "$skills_section"
-} > "$AGENTS_FILE"
-
-GITIGNORE="$(pwd)/.gitignore"
-touch "$GITIGNORE"
-
-_append_if_missing() {
-    local entry="$1" file="$2"
-    grep -qxF "$entry" "$file" || echo "$entry" >> "$file"
+_exclude_if_missing() {
+    local entry="$1"
+    grep -qxF "$entry" "$EXCLUDE_FILE" || echo "$entry" >> "$EXCLUDE_FILE"
 }
 
-if ! grep -qF "# Agent skills" "$GITIGNORE"; then
-    printf '\n# Agent skills (managed by %s/install)\n' "$SKILLS_DIR" >> "$GITIGNORE"
+if ! grep -qF "# Agent skills" "$EXCLUDE_FILE"; then
+    printf '\n# Agent skills (managed by %s/install)\n' "$SKILLS_DIR" >> "$EXCLUDE_FILE"
 fi
-_append_if_missing ".claude/" "$GITIGNORE"
-_append_if_missing "AGENTS.md" "$GITIGNORE"
+[[ "$install_claude" == true ]] && _exclude_if_missing ".claude/"
+[[ "$install_codex"  == true ]] && _exclude_if_missing ".agents/"
 
 echo "Done."
