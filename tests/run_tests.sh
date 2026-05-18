@@ -294,6 +294,42 @@ test_gitignore_preserves_existing() {
 
 run_test ".gitignore preserves existing entries" test_gitignore_preserves_existing
 
+test_full_run_with_real_skills() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills
+    skills="$(cd "$(dirname "$INSTALL")" && pwd)"
+    make_project "$project"
+
+    local output exit_code
+    output=$(run_install "$project" "$skills") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Done." "$output" || return 1
+
+    local count
+    count=$(find "$project/.claude/commands" -name "*.md" 2>/dev/null | wc -l)
+    if [[ "$count" -lt 1 ]]; then
+        _fail_msg+="  expected at least 1 file in .claude/commands/, found $count\n"
+        return 1
+    fi
+
+    assert_file_exists "$project/AGENTS.md" || return 1
+    assert_file_exists "$project/.gitignore" || return 1
+    assert_file_contains "$project/.gitignore" ".claude/" || return 1
+
+    # Re-run must be idempotent
+    run_install "$project" "$skills" >/dev/null
+    local count2
+    count2=$(grep -c "^## Skills" "$project/AGENTS.md")
+    if [[ "$count2" -ne 1 ]]; then
+        _fail_msg+="  ## Skills duplicated after re-run: found $count2\n"
+        return 1
+    fi
+}
+
+run_test "full run against real skills repo is idempotent" test_full_run_with_real_skills
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""
