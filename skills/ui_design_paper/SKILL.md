@@ -1,5 +1,5 @@
 ---
-name: paper
+name: ui-design-paper
 description: Paper-textured, print-inspired design with minimal colors, clean serif/sans typography, and tactile surface qualities.
 license: MIT
 metadata:
