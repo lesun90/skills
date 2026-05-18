@@ -5,7 +5,7 @@ A personal skill library for AI coding agents. Skills are reference guides that 
 ## Bootstrap (once per machine)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install -o ~/install
+curl -sL [https://raw.githubusercontent.com/lesun90/skills/main/install](https://raw.githubusercontent.com/lesun90/skills/refs/heads/main/install?token=GHSAT0AAAAAAD5QCVAKZIVOTUE3Q5SCNE3I2QLSKMA) -o ~/install
 chmod +x ~/install
 ```
 
