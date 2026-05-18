@@ -180,6 +180,62 @@ test_skips_skill_without_skill_md() {
 
 run_test "skips skill folders with no SKILL.md and warns" test_skips_skill_without_skill_md
 
+test_agents_md_created() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    run_install "$project" "$skills" >/dev/null
+
+    assert_file_exists "$project/AGENTS.md" || return 1
+    assert_file_contains "$project/AGENTS.md" "## Skills" || return 1
+    assert_file_contains "$project/AGENTS.md" "### foo" || return 1
+    assert_file_contains "$project/AGENTS.md" "foo content" || return 1
+    assert_file_contains "$project/AGENTS.md" "### bar" || return 1
+}
+
+run_test "creates AGENTS.md with ## Skills section" test_agents_md_created
+
+test_agents_md_idempotent() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    run_install "$project" "$skills" >/dev/null
+    run_install "$project" "$skills" >/dev/null  # run twice
+
+    local count
+    count=$(grep -c "^## Skills" "$project/AGENTS.md")
+    if [[ "$count" -ne 1 ]]; then
+        _fail_msg+="  ## Skills appears $count times, expected 1\n"
+        return 1
+    fi
+}
+
+run_test "AGENTS.md ## Skills section is not duplicated on re-run" test_agents_md_idempotent
+
+test_agents_md_preserves_existing_content() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    printf '# My Project\n\nExisting project notes.\n' > "$project/AGENTS.md"
+
+    run_install "$project" "$skills" >/dev/null
+
+    assert_file_contains "$project/AGENTS.md" "# My Project" || return 1
+    assert_file_contains "$project/AGENTS.md" "Existing project notes." || return 1
+    assert_file_contains "$project/AGENTS.md" "## Skills" || return 1
+}
+
+run_test "AGENTS.md preserves existing content before ## Skills" test_agents_md_preserves_existing_content
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""

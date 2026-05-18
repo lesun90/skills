@@ -19,7 +19,11 @@ if ! git -C "$SKILLS_DIR" pull --ff-only >/dev/null 2>&1; then
 fi
 
 COMMANDS_DIR="$(pwd)/.claude/commands"
+AGENTS_FILE="$(pwd)/AGENTS.md"
+
 mkdir -p "$COMMANDS_DIR"
+
+skills_section="## Skills"$'\n'"<!-- managed by $SKILLS_DIR/install -->"
 
 for skill_dir in "$SKILLS_DIR/skills"/*/; do
     [[ -d "$skill_dir" ]] || continue
@@ -31,7 +35,23 @@ for skill_dir in "$SKILLS_DIR/skills"/*/; do
         continue
     fi
 
+    # Claude Code
     cp "$skill_md" "$COMMANDS_DIR/$skill_name.md"
+
+    # Codex: accumulate under per-skill heading
+    skills_section+=$'\n\n'"### $skill_name"$'\n\n'"$(cat "$skill_md")"
 done
+
+# Write AGENTS.md — replace ## Skills section if present, preserve content above it
+if [[ -f "$AGENTS_FILE" ]]; then
+    prefix=$(awk '/^## Skills/{exit} {print}' "$AGENTS_FILE")
+else
+    prefix=""
+fi
+
+{
+    [[ -n "$prefix" ]] && printf '%s\n\n' "$prefix"
+    printf '%s\n' "$skills_section"
+} > "$AGENTS_FILE"
 
 echo "Done."
