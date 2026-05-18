@@ -236,6 +236,64 @@ test_agents_md_preserves_existing_content() {
 
 run_test "AGENTS.md preserves existing content before ## Skills" test_agents_md_preserves_existing_content
 
+test_gitignore_entries_added() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    run_install "$project" "$skills" >/dev/null
+
+    assert_file_contains "$project/.gitignore" ".claude/" || return 1
+    assert_file_contains "$project/.gitignore" "AGENTS.md" || return 1
+}
+
+run_test "adds .claude/ and AGENTS.md to .gitignore" test_gitignore_entries_added
+
+test_gitignore_idempotent() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    run_install "$project" "$skills" >/dev/null
+    run_install "$project" "$skills" >/dev/null  # run twice
+
+    local count
+    count=$(grep -cxF ".claude/" "$project/.gitignore")
+    if [[ "$count" -ne 1 ]]; then
+        _fail_msg+="  .claude/ appears $count times in .gitignore, expected 1\n"
+        return 1
+    fi
+    count=$(grep -cxF "AGENTS.md" "$project/.gitignore")
+    if [[ "$count" -ne 1 ]]; then
+        _fail_msg+="  AGENTS.md appears $count times in .gitignore, expected 1\n"
+        return 1
+    fi
+}
+
+run_test ".gitignore entries are not duplicated on re-run" test_gitignore_idempotent
+
+test_gitignore_preserves_existing() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+
+    printf 'node_modules/\n*.log\n' > "$project/.gitignore"
+
+    run_install "$project" "$skills" >/dev/null
+
+    assert_file_contains "$project/.gitignore" "node_modules/" || return 1
+    assert_file_contains "$project/.gitignore" "*.log" || return 1
+    assert_file_contains "$project/.gitignore" ".claude/" || return 1
+}
+
+run_test ".gitignore preserves existing entries" test_gitignore_preserves_existing
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""

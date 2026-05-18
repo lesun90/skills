@@ -54,4 +54,18 @@ fi
     printf '%s\n' "$skills_section"
 } > "$AGENTS_FILE"
 
+GITIGNORE="$(pwd)/.gitignore"
+touch "$GITIGNORE"
+
+_append_if_missing() {
+    local entry="$1" file="$2"
+    grep -qxF "$entry" "$file" || echo "$entry" >> "$file"
+}
+
+if ! grep -qF "# Agent skills" "$GITIGNORE"; then
+    printf '\n# Agent skills (managed by %s/install)\n' "$SKILLS_DIR" >> "$GITIGNORE"
+fi
+_append_if_missing ".claude/" "$GITIGNORE"
+_append_if_missing "AGENTS.md" "$GITIGNORE"
+
 echo "Done."
