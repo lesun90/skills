@@ -124,6 +124,25 @@ test_skills_dir_missing() {
 
 run_test "exits 1 when skills dir is missing" test_skills_dir_missing
 
+test_pull_failure_warns_and_continues() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+    # Remove the remote so git pull fails
+    git -C "$skills" remote remove origin 2>/dev/null || true
+
+    local output exit_code
+    output=$(run_install "$project" "$skills") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "warning" "$output" || return 1
+    assert_contains "pull" "$output" || return 1
+}
+
+run_test "warns on git pull failure and continues" test_pull_failure_warns_and_continues
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""

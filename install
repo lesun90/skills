@@ -14,4 +14,8 @@ if [[ ! -d "$SKILLS_DIR" ]]; then
     exit 1
 fi
 
+if ! git -C "$SKILLS_DIR" pull --ff-only >/dev/null 2>&1; then
+    echo "warning: git pull --ff-only failed, continuing with local copy" >&2
+fi
+
 echo "Done."
