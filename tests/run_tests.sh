@@ -160,6 +160,26 @@ test_claude_commands_created() {
 
 run_test "copies SKILL.md files to .claude/commands/" test_claude_commands_created
 
+test_skips_skill_without_skill_md() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local skills="$tmp/skills"
+    make_project "$project"
+    make_skills_repo "$skills"
+    # Add a skill folder with no SKILL.md
+    mkdir -p "$skills/skills/empty-skill"
+
+    local output
+    output=$(run_install "$project" "$skills")
+
+    assert_contains "warning" "$output" || return 1
+    assert_contains "empty-skill" "$output" || return 1
+    # Other skills still installed
+    assert_file_exists "$project/.claude/commands/foo.md" || return 1
+}
+
+run_test "skips skill folders with no SKILL.md and warns" test_skips_skill_without_skill_md
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 echo ""
