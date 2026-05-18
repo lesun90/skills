@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SKILLS_DIR="${SKILLS_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+
+if ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "error: not inside a git repository. Run from your project root." >&2
+    exit 1
+fi
+
+echo "Done."
