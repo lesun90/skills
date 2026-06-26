@@ -3,7 +3,9 @@ set -uo pipefail
 
 PASS=0
 FAIL=0
-INSTALL="$(cd "$(dirname "$0")/.." && pwd)/install"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+INSTALL="$REPO_ROOT/install"
+INSTALL_SH="$REPO_ROOT/install.sh"
 
 # ── assertion helpers ────────────────────────────────────────────────────────
 
@@ -36,6 +38,29 @@ assert_file_exists() {
 assert_file_not_exists() {
     if [[ -e "$1" ]]; then
         _fail_msg+="  expected path to not exist: $1\n"
+        return 1
+    fi
+}
+
+assert_symlink_exists() {
+    if [[ ! -L "$1" ]]; then
+        _fail_msg+="  expected symlink to exist: $1\n"
+        return 1
+    fi
+}
+
+assert_not_symlink() {
+    if [[ -L "$1" ]]; then
+        _fail_msg+="  expected path to not be a symlink: $1\n"
+        return 1
+    fi
+}
+
+assert_symlink_target() {
+    local path="$1" expected="$2" actual
+    actual=$(readlink "$path" 2>/dev/null || true)
+    if [[ "$actual" != "$expected" ]]; then
+        _fail_msg+="  expected symlink '$path' to target '$expected', got '$actual'\n"
         return 1
     fi
 }
@@ -98,6 +123,16 @@ make_project() {
 # SKILLS_CACHE points to a pre-populated local git repo (bypasses network).
 run_install() {
     local project_dir="$1" skills_cache="$2" agent="${3:-}"
+    (cd "$project_dir" && SKILLS_CACHE="$skills_cache" bash "$INSTALL_SH" $agent 2>&1)
+}
+
+run_install_copy() {
+    local project_dir="$1" skills_cache="$2" agent="${3:-}"
+    (cd "$project_dir" && SKILLS_CACHE="$skills_cache" SKILLS_INSTALL_MODE=copy bash "$INSTALL_SH" $agent 2>&1)
+}
+
+run_install_wrapper() {
+    local project_dir="$1" skills_cache="$2" agent="${3:-}"
     (cd "$project_dir" && SKILLS_CACHE="$skills_cache" bash "$INSTALL" $agent 2>&1)
 }
 
@@ -144,9 +179,64 @@ test_unknown_agent_arg() {
 
     assert_exit 1 "$exit_code" || return 1
     assert_contains "unknown agent" "$output" || return 1
+    assert_contains "Supported: all, claude, codex" "$output" || return 1
 }
 
 run_test "exits 1 for unknown agent argument" test_unknown_agent_arg
+
+test_install_wrapper_delegates_to_install_sh() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local cache="$tmp/cache"
+    make_project "$project"
+    make_skills_repo "$cache"
+
+    local output exit_code
+    output=$(run_install_wrapper "$project" "$cache" codex) && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Done." "$output" || return 1
+    assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
+    assert_file_not_exists "$project/.claude/skills/foo/SKILL.md" || return 1
+}
+
+run_test "install wrapper delegates to install.sh" test_install_wrapper_delegates_to_install_sh
+
+test_default_install_symlinks_to_cache() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local cache="$tmp/cache"
+    make_project "$project"
+    make_skills_repo "$cache"
+
+    run_install "$project" "$cache" >/dev/null
+
+    assert_symlink_exists "$project/.claude/skills/foo" || return 1
+    assert_symlink_exists "$project/.agents/skills/foo" || return 1
+    assert_symlink_target "$project/.claude/skills/foo" "$cache/skills/foo" || return 1
+    assert_symlink_target "$project/.agents/skills/foo" "$cache/skills/foo" || return 1
+    assert_file_contains "$project/.claude/skills/foo/SKILL.md" "Foo Skill" || return 1
+    assert_file_contains "$project/.agents/skills/foo/SKILL.md" "Foo Skill" || return 1
+}
+
+run_test "default install symlinks skill directories to cache" test_default_install_symlinks_to_cache
+
+test_copy_mode_installs_real_directories() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local cache="$tmp/cache"
+    make_project "$project"
+    make_skills_repo "$cache"
+
+    run_install_copy "$project" "$cache" >/dev/null
+
+    assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
+    assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
+    assert_not_symlink "$project/.claude/skills/foo" || return 1
+    assert_not_symlink "$project/.agents/skills/foo" || return 1
+}
+
+run_test "copy mode installs real skill directories" test_copy_mode_installs_real_directories
 
 test_no_remote_continues() {
     local tmp="$1"
@@ -165,6 +255,32 @@ test_no_remote_continues() {
 
 run_test "succeeds with local-only cache (no remote)" test_no_remote_continues
 
+test_dirty_cache_is_not_reset() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local cache="$tmp/cache"
+    local remote="$tmp/remote.git"
+    make_project "$project"
+    make_skills_repo "$cache"
+    git clone --quiet --bare "$cache" "$remote"
+    git -C "$cache" remote add origin "$remote"
+    git -C "$cache" fetch --quiet origin
+    local branch
+    branch=$(git -C "$cache" branch --show-current)
+    git -C "$cache" branch --set-upstream-to="origin/$branch" >/dev/null
+    printf '# Foo Skill\n\nlocal edit\n' > "$cache/skills/foo/SKILL.md"
+
+    local output exit_code
+    output=$(run_install "$project" "$cache") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "cache has local changes" "$output" || return 1
+    assert_file_contains "$cache/skills/foo/SKILL.md" "local edit" || return 1
+    assert_file_contains "$project/.claude/skills/foo/SKILL.md" "local edit" || return 1
+}
+
+run_test "dirty cache is not reset before symlink install" test_dirty_cache_is_not_reset
+
 test_claude_skills_created() {
     local tmp="$1"
     local project="$tmp/project"
@@ -181,7 +297,7 @@ test_claude_skills_created() {
     assert_file_not_exists "$project/.agents/skills/foo/SKILL.md" || return 1
 }
 
-run_test "claude: copies skill directories to .claude/skills/" test_claude_skills_created
+run_test "claude: installs skill directories to .claude/skills/" test_claude_skills_created
 
 test_codex_skills_created() {
     local tmp="$1"
@@ -199,7 +315,7 @@ test_codex_skills_created() {
     assert_file_not_exists "$project/.claude/skills/foo/SKILL.md" || return 1
 }
 
-run_test "codex: copies skill directories to .agents/skills/" test_codex_skills_created
+run_test "codex: installs skill directories to .agents/skills/" test_codex_skills_created
 
 test_all_installs_both() {
     local tmp="$1"
@@ -330,7 +446,7 @@ test_full_run_with_real_skills() {
     local tmp="$1"
     local project="$tmp/project"
     local workspace
-    workspace="$(cd "$(dirname "$INSTALL")" && pwd)"
+    workspace="$REPO_ROOT"
     # Clone workspace locally so the install script's git reset --hard
     # operates on the clone, not the workspace itself.
     local cache="$tmp/cache"
@@ -344,7 +460,7 @@ test_full_run_with_real_skills() {
     assert_contains "Done." "$output" || return 1
 
     local count
-    count=$(find "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
+    count=$(find -L "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
     if [[ "$count" -lt 1 ]]; then
         _fail_msg+="  expected at least 1 SKILL.md in .claude/skills/, found $count\n"
         return 1
@@ -355,7 +471,7 @@ test_full_run_with_real_skills() {
     # Re-run must be idempotent
     run_install "$project" "$cache" >/dev/null
     local count2
-    count2=$(find "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
+    count2=$(find -L "$project/.claude/skills" -name "SKILL.md" 2>/dev/null | wc -l)
     if [[ "$count" -ne "$count2" ]]; then
         _fail_msg+="  skill count changed after re-run: $count → $count2\n"
         return 1

@@ -16,9 +16,12 @@ agent-native paths so agents work without any reconfiguration.
 
 ## Solution
 
-A single executable script `install` that users download once. On first run it clones
+A single executable script `install.sh` that users download once. On first run it clones
 the skills repo into a local cache. On subsequent runs it fetches the latest skills
-and reinstalls them. No manual `git clone` or separate bootstrap step is needed.
+and reinstalls them. Default installs symlink agent-native skill directories to the
+shared cache so Claude Code and Codex see the same skill content. The legacy
+`install` path remains as a compatibility wrapper. No manual `git clone` or
+separate bootstrap step is needed.
 
 ---
 
@@ -26,7 +29,8 @@ and reinstalls them. No manual `git clone` or separate bootstrap step is needed.
 
 ```
 skills/
-  install              # the installer script
+  install.sh           # the installer script
+  install              # compatibility wrapper
   README.md
   skills/
     skill-name/
@@ -41,8 +45,8 @@ skills/
 ## Bootstrap (once per machine)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install -o ~/install
-chmod +x ~/install
+curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install.sh -o ~/install.sh
+chmod +x ~/install.sh
 ```
 
 ---
@@ -52,9 +56,9 @@ chmod +x ~/install
 From any project repo root:
 
 ```bash
-~/install           # all agents (default)
-~/install claude    # Claude Code only
-~/install codex     # Codex only
+~/install.sh           # all agents (default)
+~/install.sh claude    # Claude Code only
+~/install.sh codex     # Codex only
 ```
 
 ---
@@ -78,26 +82,30 @@ git reset --hard @{u}
 ```
 
 If the remote is unreachable, the script warns and continues with the cached copy.
+If the cache has local changes, the script warns, skips fetch/reset, and installs
+from the dirty cache so edits made through symlinked agent paths are not lost.
 `SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
 ### 2. Copy skills into agent-native paths
 
 **Claude Code** — `.claude/skills/<skill-name>/`
 
-Each skill directory is copied wholesale. Claude Code discovers skills in
-`.claude/skills/` via the `Skill` tool. No Claude configuration required.
+Each skill directory is symlinked to the shared cache by default. Claude Code
+discovers skills in `.claude/skills/` via the `Skill` tool. No Claude
+configuration required.
 
 **Codex** — `.agents/skills/<skill-name>/`
 
-Each skill directory is copied wholesale. Codex discovers skills in
-`.agents/skills/` automatically at session start. No Codex configuration required.
+Each skill directory is symlinked to the shared cache by default. Codex discovers
+skills in `.agents/skills/` automatically at session start. No Codex
+configuration required.
 
 ### 3. Record exclusions in `.git/info/exclude`
 
 Appends entries if not already present:
 
 ```
-# Agent skills (managed by skills/install)
+# Agent skills (managed by skills/install.sh)
 .claude/
 .agents/
 ```
@@ -109,9 +117,9 @@ and is never committed. The project's `.gitignore` is left untouched.
 
 ## Idempotency
 
-Running `install` multiple times in the same repo is safe:
+Running `install.sh` multiple times in the same repo is safe:
 
-- Skill directories are removed then re-copied (always fresh)
+- Skill links or copied directories are removed then recreated (always fresh)
 - `.git/info/exclude` entries are only appended if missing
 
 ---
@@ -122,9 +130,12 @@ Running `install` multiple times in the same repo is safe:
 |---|---|
 | Not inside a git repo | Print error, exit 1 |
 | Unknown agent argument | Print usage, exit 1 |
+| Unknown install mode | Print usage, exit 1 |
 | Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
+| Cache exists with local changes | Warn and continue with dirty cache |
 | Remote unreachable (cache exists) | Warn and continue with cached copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
+| Symlink creation fails | Warn and copy that skill directory instead |
 
 ---
 
@@ -135,14 +146,29 @@ Running `install` multiple times in the same repo is safe:
 | Claude Code | `.claude/skills/<skill-name>/` | None |
 | Codex | `.agents/skills/<skill-name>/` | None |
 
-Additional agents can be added to `install` later without changing the skills
-repo structure.
+Additional agents can be added to `install.sh` later without changing the skills
+repo structure. Supported agents are defined in one `name:destination:exclude-entry`
+registry inside `install.sh`.
+
+---
+
+## Install Mode
+
+The default install mode is `symlink`, which points each agent-native skill path at
+`$SKILLS_CACHE/skills/<skill-name>`. Editing through `.claude/skills/<skill-name>/`
+or `.agents/skills/<skill-name>/` updates the same cached skill directory.
+
+Set `SKILLS_INSTALL_MODE=copy` to install real copied directories instead:
+
+```bash
+SKILLS_INSTALL_MODE=copy ~/install.sh
+```
 
 ---
 
 ## Non-Goals
 
 - No selective skill install (all skills or none — per-skill filtering is future work)
-- No symlinks (copied files only, no live sync)
+- No per-platform install mode differences; every platform uses the selected global mode
 - No system-wide PATH modification
 - No support for Windows (bash script, macOS/Linux only)

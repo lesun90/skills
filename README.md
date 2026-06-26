@@ -1,34 +1,44 @@
 # skills
 
-A personal skill library for AI coding agents. Skills are reference guides that teach agents proven techniques, patterns, and workflows. This repo ships an `install` script that copies skills into any project without committing them.
+A personal skill library for AI coding agents. Skills are reference guides that teach agents proven techniques, patterns, and workflows. This repo ships an `install.sh` script that links skills into any project without committing them.
+
+`skills/<skill-name>/` is the single source of truth. By default, agent-native directories such as `.claude/skills/` and `.agents/skills/` contain symlinks to the shared cache, so editing through either agent path updates the same skill content.
 
 ## Bootstrap (once per machine)
 
 ```bash
-curl -sL [https://raw.githubusercontent.com/lesun90/skills/main/install](https://raw.githubusercontent.com/lesun90/skills/refs/heads/main/install?token=GHSAT0AAAAAAD5QCVAKZIVOTUE3Q5SCNE3I2QLSKMA) -o ~/install
-chmod +x ~/install
+curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install.sh -o ~/install.sh
+chmod +x ~/install.sh
 ```
 
-On first run the script clones the skills repo automatically. Subsequent runs fetch the latest skills from the remote.
+On first run the script clones the skills repo into `~/.local/share/skills`. Subsequent runs fetch the latest skills from the remote.
+
+If the cache has local edits, `install.sh` skips the remote refresh and keeps those edits intact.
 
 ## Install into a project (per project)
 
 From any project repo root:
 
 ```bash
-~/install           # all agents (default)
-~/install claude    # Claude Code only
-~/install codex     # Codex only
+~/install.sh           # all agents (default)
+~/install.sh claude    # Claude Code only
+~/install.sh codex     # Codex only
 ```
 
 Re-running is safe — all operations are idempotent.
+
+To install real copied directories instead of symlinks:
+
+```bash
+SKILLS_INSTALL_MODE=copy ~/install.sh
+```
 
 ## What install does
 
 | Output | Agent | Purpose |
 |--------|-------|---------|
-| `.claude/skills/<skill-name>/` | Claude Code | Discovered via the `Skill` tool |
-| `.agents/skills/<skill-name>/` | Codex | Discovered automatically at session start |
+| `.claude/skills/<skill-name>/` | Claude Code | Symlink to the shared cache, discovered via the `Skill` tool |
+| `.agents/skills/<skill-name>/` | Codex | Symlink to the shared cache, discovered automatically at session start |
 | `.git/info/exclude` entries | — | Keeps generated files out of git without touching `.gitignore` |
 
 ## Skills
@@ -53,7 +63,8 @@ Re-running is safe — all operations are idempotent.
 
 ```
 skills/
-  install              # installer script
+  install.sh           # installer script
+  install              # compatibility wrapper
   skills/
     <skill-name>/
       SKILL.md         # main reference (required)
@@ -73,4 +84,10 @@ bash tests/run_tests.sh
 
 1. Create `skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`)
 2. Follow the `writing-skills` skill for the full TDD-based authoring process
-3. Run `~/install` in any project to pick up the new skill
+3. Run `~/install.sh` in any project to pick up the new skill
+
+With the default symlink install, editing `.claude/skills/<skill-name>/` or `.agents/skills/<skill-name>/` edits the shared cache entry at `~/.local/share/skills/skills/<skill-name>/`.
+
+## Adding a platform
+
+Supported platforms are defined once in `install.sh` using `name:destination:exclude-entry` rows. Add one row to the platform registry and matching installer tests; the install loop and exclude handling are shared across platforms.
