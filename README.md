@@ -136,4 +136,4 @@ and vendor-only skills are added into local `skills/`. Add another vendor by add
 `vendors/sources.conf`. `path` defaults to `skills` when omitted.
 
 The GitHub Action `Sync vendor skills` runs weekly and can also be started
-manually. It opens a pull request when vendor updates change this repo.
+manually. It commits vendor updates directly to this repo.

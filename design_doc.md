@@ -215,4 +215,4 @@ temporary directory, and syncs immediate child directories from `path` that
 contain `SKILL.md`. Entries without `SKILL.md` are skipped with a warning.
 
 The `Sync vendor skills` GitHub Action runs the script weekly and on manual
-dispatch, then opens a pull request with any changes.
+dispatch, then commits vendor updates directly to this repo.

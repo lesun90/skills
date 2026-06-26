@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   sync:
@@ -20,14 +19,15 @@ jobs:
       - name: Sync vendor skills
         run: bash scripts/sync-vendor-skills.sh
 
-      - name: Open pull request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          branch: sync/vendor-skills
-          commit-message: "chore: sync vendor skills"
-          title: "Sync vendor skills"
-          body: |
-            Automated vendor skill sync.
+      - name: Commit vendor updates
+        run: |
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "No vendor updates."
+            exit 0
+          fi
 
-            Matching local skills are overwritten by configured vendor sources.
-          labels: dependencies
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: sync vendor skills"
+          git push
