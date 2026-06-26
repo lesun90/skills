@@ -15,6 +15,22 @@ On first run the script clones the skills repo into `~/.local/share/skills`. Sub
 
 If the cache has local edits, `install.sh` skips the remote refresh and keeps those edits intact.
 
+## Update skills on this machine
+
+To fetch newly published skills without installing into a project:
+
+```bash
+~/install.sh --fetch
+```
+
+This can run from any directory. It only updates `~/.local/share/skills`.
+
+To discard local cache edits and force the cache to match GitHub:
+
+```bash
+~/install.sh --fetch --force
+```
+
 ## Install into a project (per project)
 
 From any project repo root:
@@ -23,6 +39,7 @@ From any project repo root:
 ~/install.sh           # all agents (default)
 ~/install.sh claude    # Claude Code only
 ~/install.sh codex     # Codex only
+~/install.sh --force   # refresh cache even with local edits, then install
 ```
 
 Re-running is safe — all operations are idempotent.
@@ -91,3 +108,32 @@ With the default symlink install, editing `.claude/skills/<skill-name>/` or `.ag
 ## Adding a platform
 
 Supported platforms are defined once in `install.sh` using `name:destination:exclude-entry` rows. Add one row to the platform registry and matching installer tests; the install loop and exclude handling are shared across platforms.
+
+## Syncing vendor skills
+
+Vendor skills can be synced into this repo with:
+
+```bash
+bash scripts/sync-vendor-skills.sh
+```
+
+Configured vendors live in `vendors/sources.conf`:
+
+```ini
+[superpowers]
+repo = https://github.com/obra/superpowers.git
+
+[taste-skill]
+repo = https://github.com/Leonxlnx/taste-skill
+
+[ui-ux-pro-max-skill]
+repo = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+path = .claude/skills
+```
+
+Syncing is vendor-authoritative: matching local skill directories are overwritten,
+and vendor-only skills are added into local `skills/`. Add another vendor by adding a row to
+`vendors/sources.conf`. `path` defaults to `skills` when omitted.
+
+The GitHub Action `Sync vendor skills` runs weekly and can also be started
+manually. It opens a pull request when vendor updates change this repo.

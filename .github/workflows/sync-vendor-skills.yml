@@ -1,0 +1,33 @@
+name: Sync vendor skills
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Sync vendor skills
+        run: bash scripts/sync-vendor-skills.sh
+
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: sync/vendor-skills
+          commit-message: "chore: sync vendor skills"
+          title: "Sync vendor skills"
+          body: |
+            Automated vendor skill sync.
+
+            Matching local skills are overwritten by configured vendor sources.
+          labels: dependencies

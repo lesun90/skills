@@ -59,6 +59,14 @@ From any project repo root:
 ~/install.sh           # all agents (default)
 ~/install.sh claude    # Claude Code only
 ~/install.sh codex     # Codex only
+~/install.sh --force   # refresh cache even with local edits, then install
+```
+
+From any directory:
+
+```bash
+~/install.sh --fetch          # update cache only
+~/install.sh --fetch --force  # discard local cache edits and update cache
 ```
 
 ---
@@ -84,6 +92,8 @@ git reset --hard @{u}
 If the remote is unreachable, the script warns and continues with the cached copy.
 If the cache has local changes, the script warns, skips fetch/reset, and installs
 from the dirty cache so edits made through symlinked agent paths are not lost.
+`--fetch` runs only the cache sync step and does not require a project git repo.
+`--force` bypasses the dirty-cache guard.
 `SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
 ### 2. Copy skills into agent-native paths
@@ -131,8 +141,10 @@ Running `install.sh` multiple times in the same repo is safe:
 | Not inside a git repo | Print error, exit 1 |
 | Unknown agent argument | Print usage, exit 1 |
 | Unknown install mode | Print usage, exit 1 |
+| `--fetch` outside a git repo | Update cache only, exit 0 |
 | Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
 | Cache exists with local changes | Warn and continue with dirty cache |
+| Cache exists with local changes and `--force` | Fetch and reset to upstream |
 | Remote unreachable (cache exists) | Warn and continue with cached copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
 | Symlink creation fails | Warn and copy that skill directory instead |
@@ -172,3 +184,35 @@ SKILLS_INSTALL_MODE=copy ~/install.sh
 - No per-platform install mode differences; every platform uses the selected global mode
 - No system-wide PATH modification
 - No support for Windows (bash script, macOS/Linux only)
+
+---
+
+## Vendor Sync
+
+Vendor skill sources are configured in `vendors/sources.conf` with one block per
+vendor:
+
+```ini
+[superpowers]
+repo = https://github.com/obra/superpowers.git
+
+[taste-skill]
+repo = https://github.com/Leonxlnx/taste-skill
+
+[ui-ux-pro-max-skill]
+repo = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
+path = .claude/skills
+```
+
+The default vendor is `obra/superpowers`, syncing its `skills/` directory into
+this repo's `skills/` directory. Every vendor sync targets local `skills/`.
+Syncing is vendor-authoritative: matching local skill directories are removed
+and replaced, and new vendor skills are added. `path` defaults to `skills` when
+omitted.
+
+`scripts/sync-vendor-skills.sh` reads the manifest, clones each vendor into a
+temporary directory, and syncs immediate child directories from `path` that
+contain `SKILL.md`. Entries without `SKILL.md` are skipped with a warning.
+
+The `Sync vendor skills` GitHub Action runs the script weekly and on manual
+dispatch, then opens a pull request with any changes.

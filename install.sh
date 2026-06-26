@@ -4,10 +4,23 @@ set -euo pipefail
 SKILLS_REPO="${SKILLS_REPO:-git@github.com:lesun90/skills.git}"
 SKILLS_CACHE="${SKILLS_CACHE:-$HOME/.local/share/skills}"
 SKILLS_INSTALL_MODE="${SKILLS_INSTALL_MODE:-symlink}"
-AGENT="${1:-all}"
+AGENT="all"
+FETCH_ONLY=false
+FORCE_REFRESH=false
+agent_set=false
 
 PLATFORMS='claude:.claude/skills:.claude/
 codex:.agents/skills:.agents/'
+
+usage() {
+    cat <<EOF
+Usage: install.sh [--fetch] [--force] [claude|codex|all]
+
+Options:
+  --fetch   update the local skills cache without installing into a project
+  --force   refresh the cache even when it has local changes
+EOF
+}
 
 platform_names() {
     local names="" name destination exclude_entry
@@ -42,6 +55,36 @@ selected_platforms() {
     return 1
 }
 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --fetch)
+            FETCH_ONLY=true
+            ;;
+        --force)
+            FORCE_REFRESH=true
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --*)
+            echo "error: unknown option '$1'" >&2
+            usage >&2
+            exit 1
+            ;;
+        *)
+            if [[ "$agent_set" == true ]]; then
+                echo "error: only one agent target may be specified" >&2
+                usage >&2
+                exit 1
+            fi
+            AGENT="$1"
+            agent_set=true
+            ;;
+    esac
+    shift
+done
+
 SUPPORTED_PLATFORMS="all, $(platform_names)"
 SELECTED_PLATFORMS="$(selected_platforms "$AGENT" || true)"
 
@@ -55,17 +98,19 @@ case "$SKILLS_INSTALL_MODE" in
     *) echo "error: unknown install mode '$SKILLS_INSTALL_MODE'. Supported: symlink, copy" >&2; exit 1 ;;
 esac
 
-if ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
+if [[ "$FETCH_ONLY" != true ]] && ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
     echo "error: not inside a git repository. Run from your project root." >&2
     exit 1
 fi
 
-# Clone on first use; fetch + reset on subsequent runs.
-if [[ ! -d "$SKILLS_CACHE/.git" ]]; then
-    echo "Cloning skills repo..."
-    git clone --quiet "$SKILLS_REPO" "$SKILLS_CACHE"
-else
-    if [[ -n "$(git -C "$SKILLS_CACHE" status --porcelain)" ]]; then
+sync_cache() {
+    if [[ ! -d "$SKILLS_CACHE/.git" ]]; then
+        echo "Cloning skills repo..."
+        git clone --quiet "$SKILLS_REPO" "$SKILLS_CACHE"
+        return 0
+    fi
+
+    if [[ "$FORCE_REFRESH" != true && -n "$(git -C "$SKILLS_CACHE" status --porcelain)" ]]; then
         echo "warning: skills cache has local changes, skipping remote refresh" >&2
     elif ! git -C "$SKILLS_CACHE" fetch --quiet origin 2>/dev/null; then
         echo "warning: could not reach remote, using cached copy" >&2
@@ -73,6 +118,13 @@ else
         upstream=$(git -C "$SKILLS_CACHE" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo "origin/main")
         git -C "$SKILLS_CACHE" reset --hard "$upstream" --quiet
     fi
+}
+
+sync_cache
+
+if [[ "$FETCH_ONLY" == true ]]; then
+    echo "Done."
+    exit 0
 fi
 
 SKILLS_DIR="$SKILLS_CACHE"

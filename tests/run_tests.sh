@@ -131,6 +131,16 @@ run_install_copy() {
     (cd "$project_dir" && SKILLS_CACHE="$skills_cache" SKILLS_INSTALL_MODE=copy bash "$INSTALL_SH" $agent 2>&1)
 }
 
+run_fetch() {
+    local cwd="$1" skills_cache="$2" skills_repo="$3"
+    (cd "$cwd" && SKILLS_CACHE="$skills_cache" SKILLS_REPO="$skills_repo" bash "$INSTALL_SH" --fetch 2>&1)
+}
+
+run_fetch_force() {
+    local cwd="$1" skills_cache="$2" skills_repo="$3"
+    (cd "$cwd" && SKILLS_CACHE="$skills_cache" SKILLS_REPO="$skills_repo" bash "$INSTALL_SH" --fetch --force 2>&1)
+}
+
 run_install_wrapper() {
     local project_dir="$1" skills_cache="$2" agent="${3:-}"
     (cd "$project_dir" && SKILLS_CACHE="$skills_cache" bash "$INSTALL" $agent 2>&1)
@@ -280,6 +290,93 @@ test_dirty_cache_is_not_reset() {
 }
 
 run_test "dirty cache is not reset before symlink install" test_dirty_cache_is_not_reset
+
+test_fetch_clones_cache_outside_git_repo() {
+    local tmp="$1"
+    local source="$tmp/source"
+    local cache="$tmp/cache"
+    local nongit="$tmp/nongit"
+    make_skills_repo "$source"
+    mkdir "$nongit"
+
+    local output exit_code
+    output=$(run_fetch "$nongit" "$cache" "$source") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Cloning skills repo" "$output" || return 1
+    assert_file_exists "$cache/skills/foo/SKILL.md" || return 1
+    assert_file_not_exists "$nongit/.claude/skills/foo/SKILL.md" || return 1
+    assert_file_not_exists "$nongit/.agents/skills/foo/SKILL.md" || return 1
+}
+
+run_test "--fetch clones cache outside a git repo without installing" test_fetch_clones_cache_outside_git_repo
+
+test_fetch_pulls_new_remote_skill() {
+    local tmp="$1"
+    local source="$tmp/source"
+    local cache="$tmp/cache"
+    local nongit="$tmp/nongit"
+    make_skills_repo "$source"
+    mkdir "$nongit"
+    run_fetch "$nongit" "$cache" "$source" >/dev/null
+
+    mkdir -p "$source/skills/baz"
+    printf '# Baz Skill\n\nbaz content\n' > "$source/skills/baz/SKILL.md"
+    git -C "$source" add .
+    git -C "$source" commit -q -m "add baz"
+
+    local output exit_code
+    output=$(run_fetch "$nongit" "$cache" "$source") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Done." "$output" || return 1
+    assert_file_exists "$cache/skills/baz/SKILL.md" || return 1
+    assert_file_contains "$cache/skills/baz/SKILL.md" "Baz Skill" || return 1
+    assert_file_not_exists "$nongit/.claude/skills/baz/SKILL.md" || return 1
+}
+
+run_test "--fetch pulls new skills into the cache" test_fetch_pulls_new_remote_skill
+
+test_fetch_preserves_dirty_cache() {
+    local tmp="$1"
+    local source="$tmp/source"
+    local cache="$tmp/cache"
+    local nongit="$tmp/nongit"
+    make_skills_repo "$source"
+    mkdir "$nongit"
+    run_fetch "$nongit" "$cache" "$source" >/dev/null
+    printf '# Foo Skill\n\nlocal edit\n' > "$cache/skills/foo/SKILL.md"
+
+    local output exit_code
+    output=$(run_fetch "$nongit" "$cache" "$source") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "cache has local changes" "$output" || return 1
+    assert_file_contains "$cache/skills/foo/SKILL.md" "local edit" || return 1
+}
+
+run_test "--fetch preserves dirty cache by default" test_fetch_preserves_dirty_cache
+
+test_fetch_force_resets_dirty_cache() {
+    local tmp="$1"
+    local source="$tmp/source"
+    local cache="$tmp/cache"
+    local nongit="$tmp/nongit"
+    make_skills_repo "$source"
+    mkdir "$nongit"
+    run_fetch "$nongit" "$cache" "$source" >/dev/null
+    printf '# Foo Skill\n\nlocal edit\n' > "$cache/skills/foo/SKILL.md"
+
+    local output exit_code
+    output=$(run_fetch_force "$nongit" "$cache" "$source") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Done." "$output" || return 1
+    assert_file_contains "$cache/skills/foo/SKILL.md" "foo content" || return 1
+    assert_file_not_contains "$cache/skills/foo/SKILL.md" "local edit" || return 1
+}
+
+run_test "--fetch --force resets dirty cache" test_fetch_force_resets_dirty_cache
 
 test_claude_skills_created() {
     local tmp="$1"

@@ -164,14 +164,14 @@ Application Code
 
 **Brand:**
 ```bash
-node skills/brand/scripts/inject-brand-context.cjs
-node skills/brand/scripts/validate-asset.cjs <path>
+node .claude/skills/brand/scripts/inject-brand-context.cjs
+node .claude/skills/brand/scripts/validate-asset.cjs <path>
 ```
 
 **Tokens:**
 ```bash
-node skills/design-system/scripts/generate-tokens.cjs -c tokens.json
-node skills/design-system/scripts/validate-tokens.cjs -d src/
+node .claude/skills/design-system/scripts/generate-tokens.cjs -c tokens.json
+node .claude/skills/design-system/scripts/validate-tokens.cjs -d src/
 ```
 
 **Components:**
