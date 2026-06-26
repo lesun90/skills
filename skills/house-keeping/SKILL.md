@@ -5,10 +5,14 @@ description: >
   pass on existing code. Triggers for: "clean up before committing", "tidy the
   code", "remove dead code", "housekeeping", "prep for PR", "code cleanup",
   "remove stale code", "make code consistent", "follow standard practices",
-  "remove unused X", "update outdated Y". Also use when the user asks to
-  review changes before committing and wants to make sure the code is clean,
-  consistent, and follows conventions — even if they don't say "housekeeping"
-  explicitly. The goal is always: improve quality without changing behavior.
+  "remove unused X", "update outdated Y", "cleanup project", "remove dangling
+  packages", "remove unused dependencies", "clean up services", "ensure repo
+  works for new users", "fresh clone test", "README check", "onboarding
+  readiness", "organize files", "restructure docs", "project structure cleanup".
+  Also use when the user asks to review changes before committing and wants to
+  make sure the code is clean, consistent, and follows conventions — even if
+  they don't say "housekeeping" explicitly. The goal is always: improve quality
+  without changing behavior.
 ---
 
 # House-Keeping
@@ -119,6 +123,101 @@ grep -r "'function_name'" .
 ```
 
 If you're not sure — don't delete. Flag it and let the author decide.
+
+---
+
+## Project-Level Housekeeping
+
+When the scope is the whole repo — not just a single file or feature — extend
+the checklist with these passes. Do each as its own commit.
+
+### 5. Dependency Cleanup
+
+Dangling packages slow installs, introduce security surface, and mislead the
+next developer about what the project actually needs.
+
+- [ ] **List installed vs. declared packages** — compare `package.json` /
+  `requirements.txt` / `go.mod` / `Cargo.toml` against what the code actually
+  imports
+- [ ] **Remove unused packages** — uninstall and remove from the manifest;
+  run tests to confirm nothing breaks
+- [ ] **Flag outdated packages** — run the appropriate audit tool and note
+  major-version upgrades that need testing:
+
+  ```bash
+  npm outdated / pip list --outdated / go list -m -u all / cargo outdated
+  ```
+
+- [ ] **Remove lock-file artifacts** — delete leftover entries for packages
+  you just removed; commit the updated lock file alongside the manifest change
+- [ ] **Audit for security issues** — run `npm audit` / `pip-audit` /
+  `cargo audit` and fix or document any high-severity findings
+
+### 6. Service and Configuration Cleanup
+
+Stale services and config drift are invisible until a new person tries to run
+the project.
+
+- [ ] **Remove unused services** — Docker Compose services, cloud functions,
+  background workers, cron jobs that are no longer referenced
+- [ ] **Remove orphaned config files** — `.env.example` keys with no
+  corresponding code, Nginx vhosts for domains that no longer exist, CI job
+  steps that build artifacts nobody consumes
+- [ ] **Reconcile `.env.example`** — every key must map to code that reads it;
+  every key the code reads must be in `.env.example` with a safe placeholder
+- [ ] **Remove dead feature flags** — flags that are always-on or always-off;
+  inline the enabled branch and delete the flag infrastructure
+
+### 7. Fresh-Clone Readiness
+
+The test: someone clones the repo cold and follows the README. Do they succeed
+without asking a question?
+
+**Run the README yourself:**
+
+```bash
+# Start from a clean environment simulation
+git clone <repo> /tmp/test-clone && cd /tmp/test-clone
+# Follow every step in the README literally — no muscle memory shortcuts
+```
+
+Check each step:
+
+- [ ] **Prerequisites section is accurate** — correct runtime versions, system
+  tools, and environment setup; remove tools that are no longer needed
+- [ ] **Install step works** — `npm install` / `pip install -r requirements.txt`
+  / `go mod download` completes without errors
+- [ ] **Environment setup is complete** — copying `.env.example` → `.env` and
+  filling in the documented placeholders is sufficient to start the app
+- [ ] **Start command works** — the README's run command actually starts the
+  app with no extra undocumented steps
+- [ ] **No "it works on my machine" state** — nothing depends on a globally
+  installed tool, a pre-created directory, or a locally populated database that
+  isn't covered by the README
+
+Fix any step that fails. Update the README to match reality, not the other way
+around.
+
+### 8. File and Document Organization
+
+Disorganized trees force every contributor to re-discover the structure.
+
+- [ ] **Remove empty directories** — unless they hold a `.gitkeep` for a
+  required but untracked path (document why in the README)
+- [ ] **Co-locate related files** — tests next to source, config next to the
+  service that reads it, migrations next to the schema
+- [ ] **Flatten gratuitous nesting** — a directory with one file is usually
+  better as just that file; three levels of `utils/helpers/common/` is noise
+- [ ] **Consistent naming** — pick one convention (`kebab-case`, `snake_case`,
+  `PascalCase`) for files in each layer and apply it uniformly
+- [ ] **Prune doc rot** — delete or archive docs that describe a removed
+  feature, an old architecture, or a process the team no longer follows
+- [ ] **README is the entry point** — the root README should link to deeper
+  docs, not duplicate them; deeper docs should be findable from the README
+  without searching the repo
+
+After reorganizing files, run the full test suite — path-dependent imports
+break silently.
 
 ---
 
