@@ -246,15 +246,16 @@ test_default_install_symlinks_to_cache() {
 
     run_install "$project" "$cache" >/dev/null
 
-    assert_symlink_exists "$project/.claude/skills/foo" || return 1
-    assert_symlink_exists "$project/.agents/skills/foo" || return 1
-    assert_symlink_target "$project/.claude/skills/foo" "$cache/skills/foo" || return 1
-    assert_symlink_target "$project/.agents/skills/foo" "$cache/skills/foo" || return 1
+    assert_file_exists "$project/.skills/foo/SKILL.md" || return 1
+    assert_symlink_exists "$project/.claude/skills" || return 1
+    assert_symlink_exists "$project/.agents/skills" || return 1
+    assert_symlink_target "$project/.claude/skills" "$project/.skills" || return 1
+    assert_symlink_target "$project/.agents/skills" "$project/.skills" || return 1
     assert_file_contains "$project/.claude/skills/foo/SKILL.md" "Foo Skill" || return 1
     assert_file_contains "$project/.agents/skills/foo/SKILL.md" "Foo Skill" || return 1
 }
 
-run_test "default install symlinks skill directories to cache" test_default_install_symlinks_to_cache
+run_test "default install symlinks agent skill dirs to project .skills" test_default_install_symlinks_to_cache
 
 test_copy_mode_installs_real_directories() {
     local tmp="$1"
@@ -265,6 +266,7 @@ test_copy_mode_installs_real_directories() {
 
     run_install_copy "$project" "$cache" >/dev/null
 
+    assert_file_exists "$project/.skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
     assert_not_symlink "$project/.claude/skills/foo" || return 1
@@ -337,6 +339,24 @@ test_install_fetches_latest_skills() {
 
 run_test "install automatically fetches the latest repository skills" test_install_fetches_latest_skills
 
+test_local_shared_skills_are_available_without_rerun() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local cache="$tmp/cache"
+    make_project "$project"
+    make_skills_repo "$cache"
+
+    run_install "$project" "$cache" >/dev/null
+
+    mkdir -p "$project/.skills/my-local-skill"
+    printf '# My Local Skill\n' > "$project/.skills/my-local-skill/SKILL.md"
+
+    assert_file_contains "$project/.claude/skills/my-local-skill/SKILL.md" "My Local Skill" || return 1
+    assert_file_contains "$project/.agents/skills/my-local-skill/SKILL.md" "My Local Skill" || return 1
+}
+
+run_test "local .skills entries are available to agents without re-run" test_local_shared_skills_are_available_without_rerun
+
 test_untracked_cache_files_do_not_block_latest_skills() {
     local tmp="$1"
     local source="$tmp/source"
@@ -395,6 +415,23 @@ test_update_replaces_installer_from_online_source() {
 
 run_test "--update replaces the local installer from the online repository" test_update_replaces_installer_from_online_source
 
+test_upgrade_replaces_installer_from_online_source() {
+    local tmp="$1"
+    local local_installer="$tmp/install.sh"
+    local online_installer="$tmp/online-install.sh"
+    cp "$INSTALL_SH" "$local_installer"
+    printf '#!/usr/bin/env bash\necho upgraded-version\n' > "$online_installer"
+
+    local output exit_code
+    output=$(cd "$tmp" && INSTALL_SCRIPT_URL="file://$online_installer" bash "$local_installer" --upgrade 2>&1) && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Install script updated" "$output" || return 1
+    assert_file_contains "$local_installer" "upgraded-version" || return 1
+}
+
+run_test "--upgrade replaces the local installer from the online repository" test_upgrade_replaces_installer_from_online_source
+
 test_update_rejects_invalid_download() {
     local tmp="$1"
     local local_installer="$tmp/install.sh"
@@ -436,6 +473,9 @@ test_overwrite_requires_confirmation_and_preserves_local_skills() {
     assert_file_contains "$project/.agents/skills/my-local-skill/SKILL.md" "My Local Skill" || return 1
 
     output=$(cd "$project" && printf 'y\n' | SKILLS_CACHE="$cache" bash "$INSTALL_SH" codex 2>&1) || return 1
+    assert_symlink_exists "$project/.agents/skills" || return 1
+    assert_file_contains "$project/.skills/foo/SKILL.md" "Foo Skill" || return 1
+    assert_file_contains "$project/.skills/my-local-skill/SKILL.md" "My Local Skill" || return 1
     assert_file_contains "$project/.agents/skills/foo/SKILL.md" "Foo Skill" || return 1
     assert_file_contains "$project/.agents/skills/my-local-skill/SKILL.md" "My Local Skill" || return 1
 }
@@ -451,6 +491,7 @@ test_claude_skills_created() {
 
     run_install "$project" "$cache" claude >/dev/null
 
+    assert_file_exists "$project/.skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.claude/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.claude/skills/bar/SKILL.md" || return 1
     assert_file_contains "$project/.claude/skills/foo/SKILL.md" "Foo Skill" || return 1
@@ -469,6 +510,7 @@ test_codex_skills_created() {
 
     run_install "$project" "$cache" codex >/dev/null
 
+    assert_file_exists "$project/.skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
     assert_file_exists "$project/.agents/skills/bar/SKILL.md" || return 1
     assert_file_contains "$project/.agents/skills/foo/SKILL.md" "Foo Skill" || return 1
@@ -520,6 +562,7 @@ test_exclude_claude_only() {
 
     run_install "$project" "$cache" claude >/dev/null
 
+    assert_file_contains "$project/.git/info/exclude" ".skills/" || return 1
     assert_file_contains "$project/.git/info/exclude" ".claude/" || return 1
     assert_file_not_contains "$project/.git/info/exclude" ".agents/" || return 1
 }
@@ -535,6 +578,7 @@ test_exclude_codex_only() {
 
     run_install "$project" "$cache" codex >/dev/null
 
+    assert_file_contains "$project/.git/info/exclude" ".skills/" || return 1
     assert_file_contains "$project/.git/info/exclude" ".agents/" || return 1
     assert_file_not_contains "$project/.git/info/exclude" ".claude/" || return 1
 }
@@ -550,6 +594,7 @@ test_exclude_all() {
 
     run_install "$project" "$cache" >/dev/null
 
+    assert_file_contains "$project/.git/info/exclude" ".skills/" || return 1
     assert_file_contains "$project/.git/info/exclude" ".claude/" || return 1
     assert_file_contains "$project/.git/info/exclude" ".agents/" || return 1
 }
@@ -567,6 +612,11 @@ test_exclude_idempotent() {
     run_install "$project" "$cache" >/dev/null  # run twice
 
     local count
+    count=$(grep -cxF ".skills/" "$project/.git/info/exclude")
+    if [[ "$count" -ne 1 ]]; then
+        _fail_msg+="  .skills/ appears $count times in exclude, expected 1\n"
+        return 1
+    fi
     count=$(grep -cxF ".claude/" "$project/.git/info/exclude")
     if [[ "$count" -ne 1 ]]; then
         _fail_msg+="  .claude/ appears $count times in exclude, expected 1\n"

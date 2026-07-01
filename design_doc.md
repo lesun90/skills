@@ -18,8 +18,9 @@ agent-native paths so agents work without any reconfiguration.
 
 A single executable script `install.sh` that users download once. On first run it clones
 the skills repo into a local cache. On subsequent runs it fetches the latest skills
-and reinstalls them. Default installs symlink agent-native skill directories to the
-shared cache so Claude Code and Codex see the same skill content. The legacy
+and reinstalls them. Default installs copy repository skills into project-local
+`.skills/` and symlinks agent-native skill directories to that shared project
+store so Claude Code and Codex see the same skill content. The legacy
 `install` path remains as a compatibility wrapper. No manual `git clone` or
 separate bootstrap step is needed.
 
@@ -53,7 +54,7 @@ The downloaded installer updates itself atomically from the repository after
 validating the new script:
 
 ```bash
-~/install.sh --update
+~/install.sh --upgrade
 ```
 
 ---
@@ -94,26 +95,35 @@ installs from the dirty cache so edits made through symlinked agent paths are no
 lost. Untracked generated files do not block remote refresh.
 `SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
-### 2. Copy skills into agent-native paths
+### 2. Copy skills into the project-local shared store
 
-**Claude Code** — `.claude/skills/<skill-name>/`
+Repository skills are copied from the cache into `.skills/<skill-name>/`.
+User-created project-local skills also live in `.skills/<skill-name>/`.
+This directory is the per-project source of truth for agent skill installs.
 
-Each skill directory is symlinked to the shared cache by default. Claude Code
-discovers skills in `.claude/skills/` via the `Skill` tool. No Claude
-configuration required.
+### 3. Link skills into agent-native paths
 
-**Codex** — `.agents/skills/<skill-name>/`
+**Claude Code** — `.claude/skills/`
 
-Each skill directory is symlinked to the shared cache by default. Codex discovers
-skills in `.agents/skills/` automatically at session start. No Codex
-configuration required.
+The `.claude/skills/` directory is symlinked to `.skills/` by default. Claude
+Code discovers skills in `.claude/skills/` via the `Skill` tool. No Claude
+configuration required. New `.skills/<skill-name>/SKILL.md` entries become
+visible without rerunning the installer.
 
-### 3. Record exclusions in `.git/info/exclude`
+**Codex** — `.agents/skills/`
+
+The `.agents/skills/` directory is symlinked to `.skills/` by default. Codex
+discovers skills in `.agents/skills/` automatically at session start. No Codex
+configuration required. New `.skills/<skill-name>/SKILL.md` entries become
+visible without rerunning the installer.
+
+### 4. Record exclusions in `.git/info/exclude`
 
 Appends entries if not already present:
 
 ```
 # Agent skills (managed by skills/install.sh)
+.skills/
 .claude/
 .agents/
 ```
@@ -139,6 +149,7 @@ Running `install.sh` multiple times in the same repo is safe:
 | Not inside a git repo | Print error, exit 1 |
 | Unknown agent argument | Print usage, exit 1 |
 | Unknown install mode | Print usage, exit 1 |
+| `--upgrade` or `--update` | Atomically replace the downloaded installer after Bash validation |
 | Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
 | Cache exists with tracked local changes | Warn and continue with dirty cache |
 | Cache exists with untracked generated files only | Fetch and reset, leaving untracked files intact |
@@ -152,8 +163,8 @@ Running `install.sh` multiple times in the same repo is safe:
 
 | Agent | Native path | Config required? |
 |---|---|---|
-| Claude Code | `.claude/skills/<skill-name>/` | None |
-| Codex | `.agents/skills/<skill-name>/` | None |
+| Claude Code | `.claude/skills/` | None |
+| Codex | `.agents/skills/` | None |
 
 Additional agents can be added to `install.sh` later without changing the skills
 repo structure. Supported agents are defined in one `name:destination:exclude-entry`
@@ -163,9 +174,10 @@ registry inside `install.sh`.
 
 ## Install Mode
 
-The default install mode is `symlink`, which points each agent-native skill path at
-`$SKILLS_CACHE/skills/<skill-name>`. Editing through `.claude/skills/<skill-name>/`
-or `.agents/skills/<skill-name>/` updates the same cached skill directory.
+The default install mode is `symlink`, which points each selected agent-native
+skills directory at `.skills/`. Editing `.skills/<skill-name>/` updates the skill
+content seen by every selected agent, and adding a new `.skills/<skill-name>/`
+is immediately visible through the agent skill directories.
 
 Set `SKILLS_INSTALL_MODE=copy` to install real copied directories instead:
 

@@ -2,7 +2,7 @@
 
 A personal skill library for AI coding agents. Skills are reference guides that teach agents proven techniques, patterns, and workflows. This repo ships an `install.sh` script that links skills into any project without committing them.
 
-`skills/<skill-name>/` is the single source of truth. By default, agent-native directories such as `.claude/skills/` and `.agents/skills/` contain symlinks to the shared cache, so editing through either agent path updates the same skill content.
+`skills/<skill-name>/` is the repository source of truth. Inside each project, `.skills/<skill-name>/` is the local source of truth. Agent-native directories such as `.claude/skills/` and `.agents/skills/` link to `.skills/`, so Claude Code and Codex see the same skill content.
 
 ## Bootstrap (once per machine)
 
@@ -14,7 +14,7 @@ chmod +x ~/install.sh
 Update the downloaded installer itself at any time:
 
 ```bash
-~/install.sh --update
+~/install.sh --upgrade
 ```
 
 On first run the script clones the skills repo into `~/.local/share/skills`. Subsequent runs fetch the latest skills from the remote.
@@ -48,8 +48,9 @@ agent skills. A cache with tracked local edits is never forcibly reset.
 
 | Output | Agent | Purpose |
 |--------|-------|---------|
-| `.claude/skills/<skill-name>/` | Claude Code | Symlink to the shared cache, discovered via the `Skill` tool |
-| `.agents/skills/<skill-name>/` | Codex | Symlink to the shared cache, discovered automatically at session start |
+| `.skills/<skill-name>/` | Shared | Project-local skill store for remote and user-created skills |
+| `.claude/skills/` | Claude Code | Symlink to `.skills/`, discovered via the `Skill` tool |
+| `.agents/skills/` | Codex | Symlink to `.skills/`, discovered automatically at session start |
 | `.git/info/exclude` entries | — | Keeps generated files out of git without touching `.gitignore` |
 
 ## Skills
@@ -91,13 +92,25 @@ skills/
 bash tests/run_tests.sh
 ```
 
-## Adding a skill
+## Adding a repository skill
 
 1. Create `skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`)
 2. Follow the `writing-skills` skill for the full TDD-based authoring process
 3. Run `~/install.sh` in any project to pick up the new skill
 
-With the default symlink install, editing `.claude/skills/<skill-name>/` or `.agents/skills/<skill-name>/` edits the shared cache entry at `~/.local/share/skills/skills/<skill-name>/`.
+## Adding a project-local skill
+
+Create local skills in the project `.skills/` directory:
+
+```bash
+mkdir -p .skills/my-skill
+$EDITOR .skills/my-skill/SKILL.md
+```
+
+With the default symlink install, `.claude/skills/` and `.agents/skills/` point
+at `.skills/`, so new local skills are visible to both agents immediately after
+you create them. Project-local skills are excluded from git through
+`.git/info/exclude`.
 
 ## Adding a platform
 

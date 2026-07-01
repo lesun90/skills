@@ -13,10 +13,11 @@ codex:.agents/skills:.agents/'
 
 usage() {
     cat <<EOF
-Usage: install.sh [--update] [claude|codex|all]
+Usage: install.sh [--upgrade] [claude|codex|all]
 
 Options:
-  --update  update this install script from the online repository
+  --upgrade update this install script from the online repository
+  --update  alias for --upgrade
 EOF
 }
 
@@ -75,9 +76,9 @@ selected_platforms() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --update)
+        --update|--upgrade)
             if [[ $# -ne 1 || "$agent_set" == true ]]; then
-                echo "error: --update must be used by itself" >&2
+                echo "error: $1 must be used by itself" >&2
                 usage >&2
                 exit 1
             fi
@@ -145,10 +146,13 @@ sync_cache
 
 SKILLS_DIR="$SKILLS_CACHE"
 PROJECT_DIR="$(pwd)"
+PROJECT_SKILLS_DIR="$PROJECT_DIR/.skills"
+
+mkdir -p "$PROJECT_SKILLS_DIR"
 
 while IFS=: read -r name destination exclude_entry; do
     [[ -n "$name" ]] || continue
-    mkdir -p "$PROJECT_DIR/$destination"
+    mkdir -p "$(dirname "$PROJECT_DIR/$destination")"
 done <<< "$SELECTED_PLATFORMS"
 
 overwritten_targets=()
@@ -161,6 +165,9 @@ for skill_dir in "$SKILLS_DIR/skills"/*/; do
         target="$PROJECT_DIR/$destination/$skill_name"
         [[ -e "$target" || -L "$target" ]] && overwritten_targets+=("$target")
     done <<< "$SELECTED_PLATFORMS"
+
+    target="$PROJECT_SKILLS_DIR/$skill_name"
+    [[ -e "$target" || -L "$target" ]] && overwritten_targets+=("$target")
 done
 
 if [[ ${#overwritten_targets[@]} -gt 0 ]]; then
@@ -173,20 +180,51 @@ if [[ ${#overwritten_targets[@]} -gt 0 ]]; then
     esac
 fi
 
-install_skill() {
-    local skill_dir="$1" destination_dir="$2" skill_name="$3"
-    local target="$destination_dir/$skill_name"
+is_repo_skill() {
+    local skill_name="$1"
+    [[ -f "$SKILLS_DIR/skills/$skill_name/SKILL.md" ]]
+}
+
+migrate_local_agent_skills() {
+    local source_dir="$1"
+    local skill_dir skill_name target
+
+    [[ -d "$source_dir" && ! -L "$source_dir" ]] || return 0
+
+    for skill_dir in "$source_dir"/*/; do
+        [[ -d "$skill_dir" ]] || continue
+        skill_name="$(basename "$skill_dir")"
+        [[ -f "$skill_dir/SKILL.md" ]] || continue
+        is_repo_skill "$skill_name" && continue
+
+        target="$PROJECT_SKILLS_DIR/$skill_name"
+        [[ -e "$target" || -L "$target" ]] && continue
+        cp -r "${skill_dir%/}" "$PROJECT_SKILLS_DIR/"
+    done
+}
+
+install_project_skill() {
+    local skill_dir="$1" skill_name="$2"
+    local target="$PROJECT_SKILLS_DIR/$skill_name"
 
     rm -rf "$target"
+    cp -r "${skill_dir%/}" "$PROJECT_SKILLS_DIR/"
+}
+
+install_agent_skill_dir() {
+    local destination="$1"
+
+    migrate_local_agent_skills "$destination"
+    rm -rf "$destination"
 
     if [[ "$SKILLS_INSTALL_MODE" == "copy" ]]; then
-        cp -r "${skill_dir%/}" "$destination_dir/"
+        cp -r "${PROJECT_SKILLS_DIR%/}" "$destination"
         return 0
     fi
 
-    if ! ln -s "${skill_dir%/}" "$target" 2>/dev/null; then
-        echo "warning: could not symlink $skill_name into $destination_dir, copying instead" >&2
-        cp -r "${skill_dir%/}" "$destination_dir/"
+    if ! ln -s "$PROJECT_SKILLS_DIR" "$destination" 2>/dev/null; then
+        echo "warning: could not symlink $destination to .skills, copying instead" >&2
+        cp -r "${PROJECT_SKILLS_DIR%/}" "$destination"
     fi
 }
 
@@ -200,11 +238,13 @@ for skill_dir in "$SKILLS_DIR/skills"/*/; do
         continue
     fi
 
-    while IFS=: read -r name destination exclude_entry; do
-        [[ -n "$name" ]] || continue
-        install_skill "$skill_dir" "$PROJECT_DIR/$destination" "$skill_name"
-    done <<< "$SELECTED_PLATFORMS"
+    install_project_skill "$skill_dir" "$skill_name"
 done
+
+while IFS=: read -r name destination exclude_entry; do
+    [[ -n "$name" ]] || continue
+    install_agent_skill_dir "$PROJECT_DIR/$destination"
+done <<< "$SELECTED_PLATFORMS"
 
 GIT_DIR="$(git -C "$PROJECT_DIR" rev-parse --git-dir)"
 EXCLUDE_FILE="$GIT_DIR/info/exclude"
@@ -219,6 +259,8 @@ _exclude_if_missing() {
 if ! grep -qF "# Agent skills" "$EXCLUDE_FILE"; then
     printf '\n# Agent skills (managed by skills/install.sh)\n' >> "$EXCLUDE_FILE"
 fi
+
+_exclude_if_missing ".skills/"
 
 while IFS=: read -r name destination exclude_entry; do
     [[ -n "$name" ]] || continue
