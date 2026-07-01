@@ -49,6 +49,13 @@ curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install.sh -o ~/i
 chmod +x ~/install.sh
 ```
 
+The downloaded installer updates itself atomically from the repository after
+validating the new script:
+
+```bash
+~/install.sh --update
+```
+
 ---
 
 ## Usage (per project)
@@ -59,14 +66,6 @@ From any project repo root:
 ~/install.sh           # all agents (default)
 ~/install.sh claude    # Claude Code only
 ~/install.sh codex     # Codex only
-~/install.sh --force   # refresh cache even with local edits, then install
-```
-
-From any directory:
-
-```bash
-~/install.sh --fetch          # update cache only
-~/install.sh --fetch --force  # discard local cache edits and update cache
 ```
 
 ---
@@ -92,8 +91,6 @@ git reset --hard @{u}
 If the remote is unreachable, the script warns and continues with the cached copy.
 If the cache has local changes, the script warns, skips fetch/reset, and installs
 from the dirty cache so edits made through symlinked agent paths are not lost.
-`--fetch` runs only the cache sync step and does not require a project git repo.
-`--force` bypasses the dirty-cache guard.
 `SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
 ### 2. Copy skills into agent-native paths
@@ -141,10 +138,8 @@ Running `install.sh` multiple times in the same repo is safe:
 | Not inside a git repo | Print error, exit 1 |
 | Unknown agent argument | Print usage, exit 1 |
 | Unknown install mode | Print usage, exit 1 |
-| `--fetch` outside a git repo | Update cache only, exit 0 |
 | Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
 | Cache exists with local changes | Warn and continue with dirty cache |
-| Cache exists with local changes and `--force` | Fetch and reset to upstream |
 | Remote unreachable (cache exists) | Warn and continue with cached copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
 | Symlink creation fails | Warn and copy that skill directory instead |

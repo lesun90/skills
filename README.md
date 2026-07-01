@@ -11,25 +11,15 @@ curl -sL https://raw.githubusercontent.com/lesun90/skills/main/install.sh -o ~/i
 chmod +x ~/install.sh
 ```
 
+Update the downloaded installer itself at any time:
+
+```bash
+~/install.sh --update
+```
+
 On first run the script clones the skills repo into `~/.local/share/skills`. Subsequent runs fetch the latest skills from the remote.
 
 If the cache has local edits, `install.sh` skips the remote refresh and keeps those edits intact.
-
-## Update skills on this machine
-
-To fetch newly published skills without installing into a project:
-
-```bash
-~/install.sh --fetch
-```
-
-This can run from any directory. It only updates `~/.local/share/skills`.
-
-To discard local cache edits and force the cache to match GitHub:
-
-```bash
-~/install.sh --fetch --force
-```
 
 ## Install into a project (per project)
 
@@ -39,10 +29,11 @@ From any project repo root:
 ~/install.sh           # all agents (default)
 ~/install.sh claude    # Claude Code only
 ~/install.sh codex     # Codex only
-~/install.sh --force   # refresh cache even with local edits, then install
 ```
 
-Re-running is safe — all operations are idempotent.
+Each install automatically fetches the latest skills from this repository. If
+same-name skills are already installed, the script warns and asks for confirmation
+before replacing them. Skills that do not come from this repository remain intact.
 
 To install real copied directories instead of symlinks:
 
@@ -51,6 +42,9 @@ SKILLS_INSTALL_MODE=copy ~/install.sh
 ```
 
 ## What install does
+
+The installer refreshes its local repository cache, then installs the selected
+agent skills. A dirty cache is never forcibly reset.
 
 | Output | Agent | Purpose |
 |--------|-------|---------|

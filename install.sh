@@ -4,9 +4,8 @@ set -euo pipefail
 SKILLS_REPO="${SKILLS_REPO:-git@github.com:lesun90/skills.git}"
 SKILLS_CACHE="${SKILLS_CACHE:-$HOME/.local/share/skills}"
 SKILLS_INSTALL_MODE="${SKILLS_INSTALL_MODE:-symlink}"
+INSTALL_SCRIPT_URL="${INSTALL_SCRIPT_URL:-https://raw.githubusercontent.com/lesun90/skills/main/install.sh}"
 AGENT="all"
-FETCH_ONLY=false
-FORCE_REFRESH=false
 agent_set=false
 
 PLATFORMS='claude:.claude/skills:.claude/
@@ -14,12 +13,31 @@ codex:.agents/skills:.agents/'
 
 usage() {
     cat <<EOF
-Usage: install.sh [--fetch] [--force] [claude|codex|all]
+Usage: install.sh [--update] [claude|codex|all]
 
 Options:
-  --fetch   update the local skills cache without installing into a project
-  --force   refresh the cache even when it has local changes
+  --update  update this install script from the online repository
 EOF
+}
+
+update_installer() {
+    local script_path temp_file
+    script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    temp_file="$(mktemp "${script_path}.update.XXXXXX")"
+    trap 'rm -f "$temp_file"' EXIT
+
+    echo "Updating install script..."
+    curl --fail --silent --show-error --location "$INSTALL_SCRIPT_URL" --output "$temp_file"
+
+    if ! bash -n "$temp_file"; then
+        echo "error: downloaded install script is not valid Bash; update cancelled" >&2
+        exit 1
+    fi
+
+    chmod +x "$temp_file"
+    mv "$temp_file" "$script_path"
+    trap - EXIT
+    echo "Install script updated."
 }
 
 platform_names() {
@@ -57,11 +75,14 @@ selected_platforms() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --fetch)
-            FETCH_ONLY=true
-            ;;
-        --force)
-            FORCE_REFRESH=true
+        --update)
+            if [[ $# -ne 1 || "$agent_set" == true ]]; then
+                echo "error: --update must be used by itself" >&2
+                usage >&2
+                exit 1
+            fi
+            update_installer
+            exit 0
             ;;
         -h|--help)
             usage
@@ -98,7 +119,7 @@ case "$SKILLS_INSTALL_MODE" in
     *) echo "error: unknown install mode '$SKILLS_INSTALL_MODE'. Supported: symlink, copy" >&2; exit 1 ;;
 esac
 
-if [[ "$FETCH_ONLY" != true ]] && ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
+if ! git -C "$(pwd)" rev-parse --git-dir >/dev/null 2>&1; then
     echo "error: not inside a git repository. Run from your project root." >&2
     exit 1
 fi
@@ -110,7 +131,7 @@ sync_cache() {
         return 0
     fi
 
-    if [[ "$FORCE_REFRESH" != true && -n "$(git -C "$SKILLS_CACHE" status --porcelain)" ]]; then
+    if [[ -n "$(git -C "$SKILLS_CACHE" status --porcelain)" ]]; then
         echo "warning: skills cache has local changes, skipping remote refresh" >&2
     elif ! git -C "$SKILLS_CACHE" fetch --quiet origin 2>/dev/null; then
         echo "warning: could not reach remote, using cached copy" >&2
@@ -122,11 +143,6 @@ sync_cache() {
 
 sync_cache
 
-if [[ "$FETCH_ONLY" == true ]]; then
-    echo "Done."
-    exit 0
-fi
-
 SKILLS_DIR="$SKILLS_CACHE"
 PROJECT_DIR="$(pwd)"
 
@@ -134,6 +150,28 @@ while IFS=: read -r name destination exclude_entry; do
     [[ -n "$name" ]] || continue
     mkdir -p "$PROJECT_DIR/$destination"
 done <<< "$SELECTED_PLATFORMS"
+
+overwritten_targets=()
+for skill_dir in "$SKILLS_DIR/skills"/*/; do
+    [[ -f "$skill_dir/SKILL.md" ]] || continue
+    skill_name="$(basename "$skill_dir")"
+
+    while IFS=: read -r name destination exclude_entry; do
+        [[ -n "$name" ]] || continue
+        target="$PROJECT_DIR/$destination/$skill_name"
+        [[ -e "$target" || -L "$target" ]] && overwritten_targets+=("$target")
+    done <<< "$SELECTED_PLATFORMS"
+done
+
+if [[ ${#overwritten_targets[@]} -gt 0 ]]; then
+    echo "warning: ${#overwritten_targets[@]} installed skill(s) from this repository will be overwritten." >&2
+    echo "Local skills whose names are not in this repository will remain intact." >&2
+    read -r -p "Continue? [y/N] " reply || reply=""
+    case "$reply" in
+        y|Y|yes|YES|Yes) ;;
+        *) echo "Installation cancelled."; exit 0 ;;
+    esac
+fi
 
 install_skill() {
     local skill_dir="$1" destination_dir="$2" skill_name="$3"
