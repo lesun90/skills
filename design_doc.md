@@ -216,5 +216,6 @@ contain `SKILL.md`. If `path` itself contains `SKILL.md`, that directory is
 synced as one skill named after the vendor section. Entries without `SKILL.md`
 are skipped with a warning.
 
-The `Sync vendor skills` GitHub Action runs the script weekly and on manual
-dispatch, then commits vendor updates directly to this repo.
+The `Sync vendor skills` GitHub Action runs the script weekly, after changes to
+`vendors/sources.conf` land on the default branch, and on manual dispatch. It
+then commits vendor updates directly to this repo.

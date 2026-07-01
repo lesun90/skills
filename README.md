@@ -134,5 +134,6 @@ and vendor-only skills are added into local `skills/`. Add another vendor by add
 `vendors/sources.conf`. `path` defaults to `skills` when omitted. Use `path = .`
 for repositories that put `SKILL.md` at the repository root.
 
-The GitHub Action `Sync vendor skills` runs weekly and can also be started
+The GitHub Action `Sync vendor skills` runs weekly, after changes to
+`vendors/sources.conf` land on the default branch, and can also be started
 manually. It commits vendor updates directly to this repo.

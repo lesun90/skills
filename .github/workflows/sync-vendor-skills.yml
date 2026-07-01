@@ -2,6 +2,9 @@ name: Sync vendor skills
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "vendors/sources.conf"
   schedule:
     - cron: "0 10 * * 1"
 
