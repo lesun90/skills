@@ -19,7 +19,7 @@ Update the downloaded installer itself at any time:
 
 On first run the script clones the skills repo into `~/.local/share/skills`. Subsequent runs fetch the latest skills from the remote.
 
-If the cache has local edits, `install.sh` skips the remote refresh and keeps those edits intact.
+If the cache has tracked local edits, `install.sh` skips the remote refresh and keeps those edits intact.
 
 ## Install into a project (per project)
 
@@ -44,7 +44,7 @@ SKILLS_INSTALL_MODE=copy ~/install.sh
 ## What install does
 
 The installer refreshes its local repository cache, then installs the selected
-agent skills. A dirty cache is never forcibly reset.
+agent skills. A cache with tracked local edits is never forcibly reset.
 
 | Output | Agent | Purpose |
 |--------|-------|---------|

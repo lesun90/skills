@@ -89,8 +89,9 @@ git reset --hard @{u}
 ```
 
 If the remote is unreachable, the script warns and continues with the cached copy.
-If the cache has local changes, the script warns, skips fetch/reset, and installs
-from the dirty cache so edits made through symlinked agent paths are not lost.
+If the cache has tracked local changes, the script warns, skips fetch/reset, and
+installs from the dirty cache so edits made through symlinked agent paths are not
+lost. Untracked generated files do not block remote refresh.
 `SKILLS_REPO` and `SKILLS_CACHE` can both be overridden via environment variables.
 
 ### 2. Copy skills into agent-native paths
@@ -139,7 +140,8 @@ Running `install.sh` multiple times in the same repo is safe:
 | Unknown agent argument | Print usage, exit 1 |
 | Unknown install mode | Print usage, exit 1 |
 | Cache missing + remote unreachable | `git clone` fails, script exits non-zero |
-| Cache exists with local changes | Warn and continue with dirty cache |
+| Cache exists with tracked local changes | Warn and continue with dirty cache |
+| Cache exists with untracked generated files only | Fetch and reset, leaving untracked files intact |
 | Remote unreachable (cache exists) | Warn and continue with cached copy |
 | Skill folder has no `SKILL.md` | Skip that skill, print warning |
 | Symlink creation fails | Warn and copy that skill directory instead |

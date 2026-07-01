@@ -131,7 +131,7 @@ sync_cache() {
         return 0
     fi
 
-    if [[ -n "$(git -C "$SKILLS_CACHE" status --porcelain)" ]]; then
+    if [[ -n "$(git -C "$SKILLS_CACHE" status --porcelain --untracked-files=no)" ]]; then
         echo "warning: skills cache has local changes, skipping remote refresh" >&2
     elif ! git -C "$SKILLS_CACHE" fetch --quiet origin 2>/dev/null; then
         echo "warning: could not reach remote, using cached copy" >&2
