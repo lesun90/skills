@@ -123,11 +123,16 @@ repo = https://github.com/Leonxlnx/taste-skill
 [ui-ux-pro-max-skill]
 repo = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
 path = .claude/skills
+
+[stop-slop]
+repo = https://github.com/hardikpandya/stop-slop
+path = .
 ```
 
 Syncing is vendor-authoritative: matching local skill directories are overwritten,
 and vendor-only skills are added into local `skills/`. Add another vendor by adding a row to
-`vendors/sources.conf`. `path` defaults to `skills` when omitted.
+`vendors/sources.conf`. `path` defaults to `skills` when omitted. Use `path = .`
+for repositories that put `SKILL.md` at the repository root.
 
 The GitHub Action `Sync vendor skills` runs weekly and can also be started
 manually. It commits vendor updates directly to this repo.

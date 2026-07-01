@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SKILLS_REPO="${SKILLS_REPO:-git@github.com:lesun90/skills.git}"
+SKILLS_REPO="${SKILLS_REPO:-https://github.com/lesun90/skills.git}"
 SKILLS_CACHE="${SKILLS_CACHE:-$HOME/.local/share/skills}"
 SKILLS_INSTALL_MODE="${SKILLS_INSTALL_MODE:-symlink}"
 INSTALL_SCRIPT_URL="${INSTALL_SCRIPT_URL:-https://raw.githubusercontent.com/lesun90/skills/main/install.sh}"

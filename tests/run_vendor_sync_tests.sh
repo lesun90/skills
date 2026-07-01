@@ -73,6 +73,18 @@ make_vendor_repo() {
     git -C "$dir" commit -q -m "init"
 }
 
+make_root_vendor_repo() {
+    local dir="$1" content="$2"
+    git init -q "$dir"
+    git -C "$dir" config user.email "test@test.com"
+    git -C "$dir" config user.name "Test"
+    printf '%s\n' "$content" > "$dir/SKILL.md"
+    mkdir -p "$dir/references"
+    printf 'reference content\n' > "$dir/references/example.md"
+    git -C "$dir" add .
+    git -C "$dir" commit -q -m "init"
+}
+
 run_sync() {
     local project="$1" manifest="$2"
     (cd "$project" && VENDOR_SOURCES="$manifest" bash "$SCRIPT" 2>&1)
@@ -127,6 +139,27 @@ test_adds_new_vendor_skill() {
 }
 
 run_test "adds new vendor-only skills" test_adds_new_vendor_skill
+
+test_syncs_root_level_skill_as_vendor_name() {
+    local tmp="$1"
+    local project="$tmp/project"
+    local vendor="$tmp/vendor"
+    local manifest="$tmp/sources.conf"
+    mkdir -p "$project/skills"
+    make_root_vendor_repo "$vendor" "root skill content"
+    write_vendor_config "$manifest" root-skill "$vendor" "."
+
+    local output exit_code
+    output=$(run_sync "$project" "$manifest") && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Synced vendor" "$output" || return 1
+    assert_file_contains "$project/skills/root-skill/SKILL.md" "root skill content" || return 1
+    assert_file_exists "$project/skills/root-skill/references/example.md" || return 1
+    assert_file_not_exists "$project/skills/root-skill/.git/config" || return 1
+}
+
+run_test "syncs root-level SKILL.md as the vendor name" test_syncs_root_level_skill_as_vendor_name
 
 test_processes_multiple_vendors() {
     local tmp="$1"

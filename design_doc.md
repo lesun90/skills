@@ -78,7 +78,7 @@ From any project repo root:
 exist, so the script clones the repo:
 
 ```
-git clone git@github.com:lesun90/skills.git ~/.local/share/skills
+git clone https://github.com/lesun90/skills.git ~/.local/share/skills
 ```
 
 On subsequent runs the cache already exists, so the script fetches and resets:
@@ -197,17 +197,24 @@ repo = https://github.com/Leonxlnx/taste-skill
 [ui-ux-pro-max-skill]
 repo = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill
 path = .claude/skills
+
+[stop-slop]
+repo = https://github.com/hardikpandya/stop-slop
+path = .
 ```
 
 The default vendor is `obra/superpowers`, syncing its `skills/` directory into
 this repo's `skills/` directory. Every vendor sync targets local `skills/`.
 Syncing is vendor-authoritative: matching local skill directories are removed
 and replaced, and new vendor skills are added. `path` defaults to `skills` when
-omitted.
+omitted. Vendors with a root-level `SKILL.md` use `path = .` and are synced into
+`skills/<vendor-name>/`.
 
 `scripts/sync-vendor-skills.sh` reads the manifest, clones each vendor into a
 temporary directory, and syncs immediate child directories from `path` that
-contain `SKILL.md`. Entries without `SKILL.md` are skipped with a warning.
+contain `SKILL.md`. If `path` itself contains `SKILL.md`, that directory is
+synced as one skill named after the vendor section. Entries without `SKILL.md`
+are skipped with a warning.
 
 The `Sync vendor skills` GitHub Action runs the script weekly and on manual
 dispatch, then commits vendor updates directly to this repo.

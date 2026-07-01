@@ -152,6 +152,20 @@ test_not_git_repo() {
 
 run_test "exits 1 when not in a git repo" test_not_git_repo
 
+test_default_repo_uses_public_https_url() {
+    local tmp="$1"
+    local default_line
+    default_line=$(grep '^SKILLS_REPO=' "$INSTALL_SH")
+
+    assert_contains "https://github.com/lesun90/skills.git" "$default_line" || return 1
+    if [[ "$default_line" == *"git@github.com"* ]]; then
+        _fail_msg+="  default SKILLS_REPO should not require GitHub SSH access\n"
+        return 1
+    fi
+}
+
+run_test "default repo URL works on machines without GitHub SSH keys" test_default_repo_uses_public_https_url
+
 test_clone_fails_when_unreachable() {
     local tmp="$1"
     local project="$tmp/project"
@@ -168,6 +182,27 @@ test_clone_fails_when_unreachable() {
 }
 
 run_test "exits non-zero when cache is missing and repo is unreachable" test_clone_fails_when_unreachable
+
+test_clone_creates_missing_cache_parent_directories() {
+    local tmp="$1"
+    local source="$tmp/source"
+    local project="$tmp/project"
+    local cache="$tmp/missing/parents/cache"
+    make_skills_repo "$source"
+    make_project "$project"
+
+    local output exit_code
+    output=$(cd "$project" \
+        && SKILLS_CACHE="$cache" SKILLS_REPO="$source" \
+        bash "$INSTALL_SH" codex 2>&1) && exit_code=$? || exit_code=$?
+
+    assert_exit 0 "$exit_code" || return 1
+    assert_contains "Cloning skills repo" "$output" || return 1
+    assert_file_exists "$cache/skills/foo/SKILL.md" || return 1
+    assert_file_exists "$project/.agents/skills/foo/SKILL.md" || return 1
+}
+
+run_test "first install creates missing cache parent directories" test_clone_creates_missing_cache_parent_directories
 
 test_unknown_agent_arg() {
     local tmp="$1"

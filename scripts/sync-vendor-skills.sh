@@ -38,6 +38,15 @@ sync_vendor() {
 
     mkdir -p "$target_dir"
 
+    if [[ -f "$source_dir/SKILL.md" ]]; then
+        rm -rf "$target_dir/$name"
+        mkdir -p "$target_dir/$name"
+        cp -R "$source_dir"/. "$target_dir/$name/"
+        rm -rf "$target_dir/$name/.git"
+        echo "Synced vendor $name."
+        return 0
+    fi
+
     for skill_dir in "$source_dir"/*/; do
         [[ -d "$skill_dir" ]] || continue
         skill_name="$(basename "$skill_dir")"
