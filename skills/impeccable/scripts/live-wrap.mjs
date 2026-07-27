@@ -14,14 +14,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isGeneratedFile } from './lib/is-generated.mjs';
+import { resolveLiveTemplateExtensions } from './lib/template-extensions.mjs';
 import { readBuffer as readManualEditsBuffer } from './live/manual-edits-buffer.mjs';
+import { findSourceFile } from './live/source-search.mjs';
 import {
   buildSvelteComponentCssAuthoring,
   scaffoldSvelteComponentSession,
   shouldUseSvelteComponentInjection,
 } from './live/svelte-component.mjs';
-
-const EXTENSIONS = ['.html', '.jsx', '.tsx', '.vue', '.svelte', '.astro'];
 
 export async function wrapCli() {
   const args = process.argv.slice(2);
@@ -68,6 +68,13 @@ The agent should insert variant HTML at insertLine.`);
   const filePath = argVal(args, '--file');
   const text = argVal(args, '--text');
   const pageUrl = argVal(args, '--page-url');
+  // Preflight passes this for source-preview targets. It computes the scaffold
+  // (element location + wrapper text) but does NOT write it into source. The
+  // agent then writes the wrapper + all variants in one atomic edit. The
+  // premature server-side write full-reloaded the framework mid-generate and
+  // stranded the browser at 0/N (live-server.mjs missed-completion note). It is
+  // a no-op on the svelte-component path, which never writes the route source.
+  const deferSourceWrite = args.includes('--defer-source-write');
 
   if (!id) { console.error('Missing --id'); process.exit(1); }
   if (!elementId && !classes && !query) {
@@ -334,6 +341,7 @@ The agent should insert variant HTML at insertLine.`);
   let outputEndLine = startLine + wrapperLines.length + (originalLines.length - 1);
   let insertLine;
   let svelteSession = null;
+  let deferredWrapper = null;
 
   if (useSvelteComponent) {
     // Svelte/SvelteKit resets component-local state on markup HMR updates.
@@ -353,6 +361,20 @@ The agent should insert variant HTML at insertLine.`);
     outputStartLine = 1;
     outputEndLine = 1;
     insertLine = 1;
+  } else if (deferSourceWrite) {
+    // Deferred source write: compute the scaffold text but leave source
+    // untouched. The agent replaces the picked element's source range with
+    // `wrapperBlock` (variants spliced at the marker) in one edit. Writing the
+    // scaffold here first would reload the framework before the agent's write
+    // lands, and a browser caught mid-reload misses the `done` and sits at 0/N.
+    deferredWrapper = {
+      block: wrapperLines.join('\n'),
+      replaceStartLine: startLine + 1, // 1-indexed picked-element range the
+      replaceEndLine: endLine + 1,     // agent's wrapper block replaces
+    };
+    // insertLine matches the final file position the wrapper occupies once the
+    // agent replaces the picked range, so downstream consumers stay consistent.
+    insertLine = startLine + 6 + (originalLines.length - 1) + 1;
   } else {
     // Replace the original element with the wrapper
     const newLines = [
@@ -383,6 +405,13 @@ The agent should insert variant HTML at insertLine.`);
     file: outputRelFile,
     sourceFile: useFrameworkComponent ? relTargetFile : undefined,
     previewMode,
+    // Deferred source write: the wrapper is NOT yet in source. The agent
+    // replaces [replaceStartLine, replaceEndLine] with `wrapperBlock` (variants
+    // spliced at the "insert below this line" marker) in one atomic edit.
+    sourceWritten: deferredWrapper ? false : undefined,
+    wrapperBlock: deferredWrapper ? deferredWrapper.block : undefined,
+    replaceStartLine: deferredWrapper ? deferredWrapper.replaceStartLine : undefined,
+    replaceEndLine: deferredWrapper ? deferredWrapper.replaceEndLine : undefined,
     componentDir: componentSession?.componentDir,
     propContract: componentSession?.propContract,
     sourceStartLine: useFrameworkComponent ? startLine + 1 : undefined,
@@ -672,56 +701,19 @@ function buildCssAuthoring(styleMode, count) {
 /**
  * Search project files for the query string (class name, ID, etc.)
  * Returns the first matching file path, or null.
+ *
+ * Only `node_modules`, `.git`, and `.impeccable` are skipped outright.
+ * dist/build/out are left to the isGeneratedFile guard so the
+ * `includeGenerated` second pass can still find the element there and report
+ * `generatedMatch`.
  */
 function findFileWithQuery(query, cwd, genOpts = {}) {
-  const searchDirs = ['src', 'app', 'pages', 'components', 'public', 'views', 'templates', '.'];
-  const seen = new Set();
-
-  for (const dir of searchDirs) {
-    const absDir = path.join(cwd, dir);
-    if (!fs.existsSync(absDir)) continue;
-    const result = searchDir(absDir, query, seen, 0, genOpts);
-    if (result) return result;
-  }
-  return null;
-}
-
-function searchDir(dir, query, seen, depth, genOpts) {
-  if (depth > 5) return null; // don't go too deep
-  const realDir = fs.realpathSync(dir);
-  if (seen.has(realDir)) return null;
-  seen.add(realDir);
-
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return null; }
-
-  // Check files first
-  for (const entry of entries) {
-    if (!entry.isFile()) continue;
-    const ext = path.extname(entry.name).toLowerCase();
-    if (!EXTENSIONS.includes(ext)) continue;
-
-    const filePath = path.join(dir, entry.name);
-    if (!genOpts.includeGenerated && isGeneratedFile(filePath, genOpts)) continue;
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (content.includes(query)) return filePath;
-    } catch { /* skip unreadable files */ }
-  }
-
-  // Then recurse into directories. Always skip node_modules and .git (never
-  // project content). dist/build/out are left to the isGeneratedFile guard so
-  // the includeGenerated second-pass can still find the element there and
-  // report `generatedMatch`.
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name === 'node_modules' || entry.name === '.git') continue;
-    const result = searchDir(path.join(dir, entry.name), query, seen, depth + 1, genOpts);
-    if (result) return result;
-  }
-
-  return null;
+  return findSourceFile({
+    query,
+    cwd,
+    extensions: resolveLiveTemplateExtensions(cwd),
+    fileFilter: (filePath) => genOpts.includeGenerated || !isGeneratedFile(filePath, genOpts),
+  });
 }
 
 /**
