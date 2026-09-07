@@ -1,6 +1,6 @@
 ---
 name: design
-description: "Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini or Atlas Cloud AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (22 styles, social/ads/web/print), icon design (15 styles, SVG, Gemini 3.1 Pro), social photos (HTML→screenshot, multi-platform). Actions: design logo, create CIP, generate mockups, build slides, design banner, generate icon, create social photos, social media images, brand identity, design system. Platforms: Facebook, Twitter, LinkedIn, YouTube, Instagram, Pinterest, TikTok, Threads, Google Ads."
+description: "Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini, Atlas Cloud, or MuAPI AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (22 styles, social/ads/web/print), icon design (15 styles, SVG, Gemini 3.1 Pro), social photos (HTML→screenshot, multi-platform). Actions: design logo, create CIP, generate mockups, build slides, design banner, generate icon, create social photos, social media images, brand identity, design system. Platforms: Facebook, Twitter, LinkedIn, YouTube, Instagram, Pinterest, TikTok, Threads, Google Ads."
 argument-hint: "[design-type] [context]"
 license: MIT
 metadata:
@@ -37,9 +37,14 @@ Unified design skill: brand, tokens, UI, logo, CIP, slides, banners, social phot
 | Social media images/photos | Social Photos (built-in) | `references/social-photos-design.md` |
 | SVG icons, icon sets | Icon (built-in) | `references/icon-design.md` |
 
+## Script Paths
+
+Script paths in this skill and its `references/` are relative to the directory that contains this SKILL.md, not to the project: `scripts/<file>` is this skill's own `scripts/` folder, and `../<skill>/scripts/<file>` is a sibling sub-skill installed alongside it. Build the full path from that directory (Claude Code reports it as the skill's base directory when the skill loads) and keep the working directory at the project root — the scripts read and write project files such as `docs/brand-guidelines.md`, `assets/design-tokens.json` or `src/` relative to it.
+
 ## Logo Design (Built-in)
 
-55+ styles, 30 color palettes, 25 industry guides. Gemini Nano Banana models.
+55+ styles, 30 color palettes, 25 industry guides. Gemini Nano Banana, Atlas
+Cloud, and MuAPI image generation.
 
 ### Logo: Generate Design Brief
 
@@ -63,6 +68,8 @@ python3 scripts/logo/search.py "healthcare medical" --domain industry
 python3 scripts/logo/generate.py --brand "TechFlow" --style minimalist --industry tech
 python3 scripts/logo/generate.py --prompt "coffee shop vintage badge" --style vintage
 python3 scripts/logo/generate.py --brand "TechFlow" --provider atlas
+python3 scripts/logo/generate.py --brand "TechFlow" --provider muapi
+python3 scripts/logo/generate.py --brand "TechFlow" --provider muapi --muapi-model nano-banana-pro
 ```
 
 **IMPORTANT:** When scripts fail, try to fix them directly.
@@ -304,7 +311,19 @@ python3 --version || python --version
 ```bash
 export GEMINI_API_KEY="your-key"  # https://aistudio.google.com/apikey
 pip install google-genai pillow
+
+# Optional MuAPI provider (no extra Python package required)
+export MUAPI_API_KEY="your-key"
 ```
+
+MuAPI uses the asynchronous model endpoint and prediction result API. See the
+[MuAPI API reference](https://muapi.ai/docs/api-reference) for authentication
+and the [nano-banana model contract](https://api.muapi.ai/api/v1/models/nano-banana)
+or [nano-banana-pro model contract](https://api.muapi.ai/api/v1/models/nano-banana-pro)
+for the current model-specific schemas. The logo generator supports both documented
+model slugs and sends their shared required `prompt` plus optional `aspect_ratio`
+fields; the Pro model also accepts an optional `resolution` field that this focused
+logo workflow leaves at the provider default.
 
 > **Note for Windows:** Use `python` instead of `pip` where needed (e.g., `python -m pip install ...`).
 
